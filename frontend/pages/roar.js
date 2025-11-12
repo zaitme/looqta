@@ -19,7 +19,6 @@
  */
 'use client';
 import { useState, useEffect } from 'react';
-import { getCookie } from '../utils/cookies';
 
 // Use proxy route - works behind reverse proxy and avoids CORS issues
 // The proxy route runs server-side in Next.js and forwards requests to backend
