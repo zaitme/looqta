@@ -1,0 +1,38 @@
+{
+  "name": "looqta-backend",
+  "version": "0.2.0",
+  "private": true,
+  "scripts": {
+    "dev": "node src/index.js",
+    "start": "node src/index.js",
+    "test": "jest --runInBand",
+    "test:unit": "jest --runInBand tests/*.test.js",
+    "test:integration": "jest --runInBand tests/integration.test.js",
+    "test:feature": "jest --runInBand tests/feature-validation.test.js",
+    "test:schema": "node tests/schema-validation.js",
+    "test:scrapers": "node tests/scraper-validation.js",
+    "test:roar": "node tests/roar-admin-validation.js",
+    "test:performance": "node tests/performance-baseline.js",
+    "test:all": "node tests/master-validation.js",
+    "validate": "npm run test:schema && npm run test:scrapers && npm run test:roar && npm run test:performance"
+  },
+  "dependencies": {
+    "axios": "^1.4.0",
+    "bcrypt": "^6.0.0",
+    "build": "^0.1.4",
+    "cookie-parser": "^1.4.7",
+    "csrf": "^3.1.0",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "express-session": "^1.18.2",
+    "ioredis": "^5.3.2",
+    "mysql2": "^3.3.3",
+    "node-schedule": "^2.1.1",
+    "puppeteer": "^24.29.1",
+    "winston": "^3.18.3"
+  },
+  "devDependencies": {
+    "jest": "^29.6.1",
+    "supertest": "7.0.0"
+  }
+}

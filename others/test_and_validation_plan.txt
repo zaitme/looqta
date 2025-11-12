@@ -1,0 +1,146 @@
+Looqta – Cursor Testing & Validation Master Plan
+================================================
+
+Purpose:
+--------
+This document defines a full testing and validation plan for the Cursor Agent to ensure
+that all previously discussed and implemented features (from the initial and complete implementation plans)
+are properly validated, functional, and integrated. It also defines the final repository structure cleanup
+and file relocation strategy to keep the app maintainable and production-ready.
+
+------------------------------------------------------------
+1. Core Testing Objectives
+------------------------------------------------------------
+- Validate all new and existing features for operational reliability.
+- Ensure database schema changes (price_history, price_alerts, product updates) are correctly applied.
+- Confirm scraping, alerting, and data consistency logic works end-to-end.
+- Guarantee UI and API layers reflect correct, up-to-date data.
+- Maintain code cleanliness by isolating non-critical files under `/others`.
+
+------------------------------------------------------------
+2. Pre-Validation Setup
+------------------------------------------------------------
+Cursor Agent must ensure the following before running tests:
+
+1. Environment variables are properly configured:
+   - `.env` contains valid credentials for MySQL, APIs, and external services.
+   - `NODE_ENV` is set to `development` for testing or `production` for final validation.
+
+2. Database structure updated (migration applied):
+   - Tables created:
+     - `price_history`
+     - `price_alerts`
+   - `products` table updated with columns: `average_price`, `price_drop_percent`, `last_checked_at`, `store_source`.
+   - All foreign key constraints and indexes applied.
+
+3. Ensure scraper scripts or workers are running correctly under PM2 or background service.
+
+------------------------------------------------------------
+3. Feature Validation Matrix
+------------------------------------------------------------
+Each feature to be tested systematically:
+
+| Feature | Test Focus | Expected Result |
+|----------|-------------|----------------|
+| Price Comparison Engine | Correct min/max price and vendor info | All prices show accurate value; no nulls |
+| Price History Tracking | Daily or triggered logging of price change | Entries appear in `price_history` table |
+| Price Alerts | Triggered when threshold met | Email/Notification sent |
+| Product Detail Enrichment | Brand, category, image consistency | All products have enriched data |
+| AI Product Matching | Detect duplicates / merge variants | No duplicates in display view |
+| Search Optimization | Returns relevant results | Top 5 results match query intent |
+| PWA Functionality | Offline and fast reload | Works offline in Chrome dev tools |
+| Retailer API Integration | Test one live endpoint | Returns correct JSON |
+| Performance Monitoring | Verify alert on slow scraping | Notification logged |
+| WhatsApp/Push Alerts | Test send endpoint | Message delivered successfully |
+
+------------------------------------------------------------
+4. Integration and Automation Tests
+------------------------------------------------------------
+- **API Tests**: Using Postman or cURL, verify:
+  - `/api/products`, `/api/alerts`, `/api/history` endpoints return correct data.
+- **Frontend Tests**: Verify React/Vue components display correct info.
+- **Cron / Scheduler Tests**: Confirm background tasks update records and push alerts correctly.
+- **AI Matching Script**: Run with test dataset and confirm grouping accuracy > 95%.
+- ** /roar validate all functions on roar admin console work as expected 
+
+------------------------------------------------------------
+5. Folder Structure and Cleanup
+------------------------------------------------------------
+To maintain clean production code, restructure files as follows:
+
+```
+/backend
+  /src
+    /models
+    /controllers
+    /routes
+    /services
+  /migrations
+  /tests
+/frontend
+  /roar
+  /components
+  /pages
+  /services
+  /public
+/others
+  test_plans/
+  mocks/
+  legacy_docs/
+  README-old.md
+  any *.md file used for planning or test mocks
+```
+
+- The `/others` directory will contain non-executable content such as:
+  - Test plans, old documentation, markdown drafts, and mock datasets.
+  - Deletion of `/others` should have **zero impact** on core app logic or build.
+  - ensure any endpoint / folder bein deleted does not have anything to do with the app functionality
+
+------------------------------------------------------------
+6. Cursor Agent Action Plan
+------------------------------------------------------------
+Cursor should perform the following validations step-by-step:
+
+1. **Schema Validation**
+   - Run migrations and verify all new tables exist.
+   - Check data types and foreign key integrity.
+
+2. **Backend Testing**
+   - Run unit tests (if available) or perform direct API checks.
+   - Log all failures with request/response payloads.
+
+3. **Frontend Verification**
+   - Confirm UI properly reflects backend data.
+   - Validate PWA installability and offline cache.
+
+4. **Scraper & Automation Validation**
+   - Trigger scrapers manually or via scheduler.
+   - Verify successful job completion and DB updates.
+
+5. **Notification Testing**
+   - Manually set price thresholds to trigger alerts.
+   - Confirm delivery via email or WhatsApp.
+
+6. **Performance Baseline**
+   - Log page load speed and API response time (<300ms ideal).
+
+------------------------------------------------------------
+7. Manual Developer Tasks (You)
+------------------------------------------------------------
+- Apply final SQL migrations if Cursor Agent is limited by permissions.
+- Review data accuracy on production after migration.
+- Run final production build and deploy using your preferred CI/CD process.
+- Confirm monitoring alerts (e.g., uptime robot or internal logs).
+
+------------------------------------------------------------
+8. Completion Criteria
+------------------------------------------------------------
+- All features validated and test-passed.
+- Database fully migrated and seeded.
+- All non-critical files moved to `/others`.
+- Application runs error-free in both local and production environments.
+- Documentation generated and archived in `/others`.
+
+------------------------------------------------------------
+End of Plan
+------------------------------------------------------------

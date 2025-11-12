@@ -1,0 +1,291 @@
+
+High-Efficiency Web Scraper Enhancement Plan
+============================================
+
+Purpose
+-------
+This document is a step-by-step implementation plan for the Cursor Agent to upgrade Looqta's scraping system
+for KSA shopping sites (Amazon.sa, Noon, Jarir, Extra, etc.). The plan focuses on:
+- Immediate responsive UX via Read-Through Cache & Stale-While-Revalidate (SWR)
+- Absolute data integrity via a strict validation pipeline and atomic DB writes
+- High-efficiency delta updates using tiered cron-based scraping and prioritization
+- Data modeling and operational guidance to support the above
+
+This is intended to be applied to the backend (Node.js), scrapers (Puppeteer/axios), Redis, and MySQL.
+
+--------------------------------------------------------------------------------
+PHASE 1 — REAL-TIME ARCHITECTURE & UX STRATEGY (Immediate Display)
+--------------------------------------------------------------------------------
+Goal: Serve product/search results immediately while guaranteeing fresh data updates in the background.
+
+1.1 Read-Through Cache Pattern with Stale-While-Revalidate (SWR)
+----------------------------------------------------------------------
+API request flow for /api/search?q=... or /api/product/:id:
+
+1) Read Cache (fast)
+   - Normalized key pattern: search:{query_norm} or product:{site}:{product_id}
+   - Query Redis for cached JSON payload.
+
+2) Serve Stale (immediate)
+   - If a cached payload exists (even if stale): return cached payload immediately to the client.
+   - Response should include metadata: { source: 'cache', fetchedAt: '...', is_stale: true/false }
+
+3) Trigger Update (async)
+   - If cached payload is older than freshness_threshold (e.g., 30 minutes for hot items, 2 hours otherwise):
+     - Queue a background task to re-scrape that specific query/product (use BullMQ or similar).
+     - The background task does the scrape -> validation pipeline -> atomic DB write -> update Redis (invalidate/replace key).
+
+4) Database Update (atomic)
+   - After validation, write the new verified data to MySQL and refresh Redis atomically (preferably using a Lua script or a single pipeline transaction):
+     - Update product table via INSERT ... ON DUPLICATE KEY UPDATE
+     - Insert price point into price_history
+     - Replace Redis key (SET key json EX ttl)
+
+5) No Cache Found (first-time cold request)
+   - Block the initial request for a brief, bounded time (max 5–10s):
+     - Attempt a fast API-first scrape (XHR endpoints) OR a single-page Puppeteer render
+     - Validate result; populate DB and Redis; return result to user.
+   - If the scrape cannot complete within the bounded time: return an empty/safe result with a friendly message and queue a background job.
+
+Implementation notes:
+- Redis TTL strategy:
+  - For HOT items: TTL = 60–120 minutes
+  - For WARM items: TTL = 2–6 hours
+  - For COLD items: TTL = 12–48 hours
+- Response metadata example:
+  {
+    "source":"cache",
+    "fetchedAt":"2025-11-12T10:10:00Z",
+    "is_stale": true,
+    "results":[ ... ]
+  }
+
+--------------------------------------------------------------------------------
+PHASE 2 — DATA INTEGRITY & ATOMIC UPDATES
+--------------------------------------------------------------------------------
+Goal: Ensure nothing invalid is served, ensure validated data is written atomically to DB + cache.
+
+2.1 Validation & Cleansing Pipeline (pre-write)
+----------------------------------------------------------------------
+Every scraped record must pass these stages in order. If a stage fails, actions are defined.
+
+Stage A — Schema Presence Check (Required fields)
+  - Required fields: product_name, price_amount, price_currency, product_url, image_url, site, site_product_id
+  - Action on failure: Reject record, log failure with metadata (site, query, raw HTML/XHR snapshot).
+
+Stage B — Value Validation
+  - price_amount must parse to a number > 0
+  - price_currency must be 'SAR' or convertible
+  - product_url must be absolute URL (starts with https://)
+  - image_url must be a valid URL and not a placeholder
+  - Action on failure: Reject and log as above.
+
+Stage C — Missing Non-Critical Fields
+  - If missing optional fields (seller_rating_count, seller_location, shipping_estimate):
+    - Fill with NULL or sensible default (0 for counts)
+    - Allow record to proceed.
+
+Stage D — De-duplication & Normalization
+  - Normalize title (trim, remove extra whitespace, unicode normalization)
+  - Normalize price to numeric (decimals)
+  - If multiple price offers for same site+product_id: pick deterministic price (lowest price, or primary seller priority list)
+  - Compute a normalized internal product_id (hash(site + site_product_id) or mapped SKU)
+  - Action on duplicates: Merge into single canonical record; log merged sources.
+
+Stage E — Enrichment (optional but recommended)
+  - Derive flags: is_fulfilled_by_retailer, shipping_estimate_days, vat_included (try to infer)
+  - Apply locale-specific modifiers: set currency_symbol = 'SAR'
+
+2.2 Atomic Database Writes
+----------------------------------------------------------------------
+- Use MySQL transactions where possible. For single-row upserts use:
+  INSERT INTO products (site, site_product_id, title, price_amount, price_currency, image_url, affiliate_link, is_valid, updated_at)
+  VALUES (...)
+  ON DUPLICATE KEY UPDATE
+    title=VALUES(title),
+    price_amount=VALUES(price_amount),
+    price_currency=VALUES(price_currency),
+    image_url=VALUES(image_url),
+    affiliate_link=VALUES(affiliate_link),
+    is_valid=VALUES(is_valid),
+    updated_at=NOW();
+
+- Ensure unique composite key on (site, site_product_id) to enable ON DUPLICATE KEY UPDATE.
+- After successful product upsert, INSERT price history:
+  INSERT INTO price_history (product_id, price, currency, source, recorded_at)
+  VALUES (LAST_INSERT_ID() or retrieved product_id, price_amount, price_currency, 'noon', NOW());
+
+- After DB write success, update Redis key atomically. Use Redis MULTI/EXEC or a small Lua script to set new JSON payload and metadata.
+
+--------------------------------------------------------------------------------
+PHASE 3 — HIGH-EFFICIENCY CRON STRATEGY (DELTA SEARCH)
+--------------------------------------------------------------------------------
+Goal: Update only the delta for high-value products to reduce load while staying fresh for users.
+
+3.1 Metric Collection
+----------------------------------------------------------------------
+Create a lightweight metrics table to drive prioritization:
+
+CREATE TABLE product_metrics (
+  product_id INT PRIMARY KEY,
+  search_count_week INT DEFAULT 0,
+  last_scraped_at TIMESTAMP NULL,
+  tier ENUM('HOT','WARM','COLD') DEFAULT 'COLD',
+  is_tracked BOOLEAN DEFAULT FALSE,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+- Increment search_count_week on each product view/search hit (use a Redis counter and periodic flush to MySQL to reduce DB write volume).
+
+3.2 Tiering & Refresh Rates
+----------------------------------------------------------------------
+- HOT: Top 1% by search_count_week OR is_tracked = true -> refresh every 1–2 hours
+- WARM: Next 10–20% -> refresh every 4–6 hours
+- COLD: All others -> refresh every 24 hours (or less frequent)
+
+3.3 Cron Job Strategy
+----------------------------------------------------------------------
+- Scheduler runs every hour.
+- Query DB for products where tier = HOT and last_scraped_at <= NOW() - INTERVAL 1 HOUR
+- Query DB for WARM where last_scraped_at <= NOW() - INTERVAL 4 HOUR
+- Push these product_ids into a prioritized job queue for workers to process (BullMQ queues with concurrency limits).
+- Workers process queue respecting rate limits per domain and proxy rotation.
+
+3.4 Delta Scraping Optimization
+----------------------------------------------------------------------
+- For each product, scrape only what changed: price, stock status, shipping. Avoid re-downloading full pages where the API/XHR includes a small JSON payload containing price & availability.
+- Use HTTP HEAD / lightweight XHR when possible, falling back to Puppeteer if necessary.
+
+--------------------------------------------------------------------------------
+PHASE 4 — DATA MODELING RECOMMENDATIONS
+--------------------------------------------------------------------------------
+Goal: Ensure schema supports requirements for integrity, queries, and performance.
+
+4.1 Product Unique Keying
+----------------------------------------------------------------------
+- Composite unique key: (site, site_product_id) on products table.
+- Store canonical internal product_id (INT AUTO_INCREMENT) for cross-site merging, if required.
+
+4.2 Important Tables Overview
+----------------------------------------------------------------------
+- products (id, site, site_product_id, title, price_amount, price_currency, image_url, affiliate_link, is_valid BOOLEAN, last_checked_at TIMESTAMP, trust_score INT, created_at, updated_at)
+- price_history (id, product_id, price, currency, source, recorded_at)
+- product_metrics (product_id, search_count_week, last_scraped_at, tier, is_tracked)
+- product_sources (product_id, site, site_product_id, url, last_seen_at, raw_payload JSON) [optional for source lineage]
+
+4.3 Required Field Flag
+----------------------------------------------------------------------
+- Add boolean column `is_valid` (default FALSE). Set to TRUE only after the record passes the entire Phase 2 Validation Pipeline. **The API must never return a record where is_valid = FALSE.**
+
+--------------------------------------------------------------------------------
+IMPLEMENTATION DETAILS & PSEUDO-CODE
+--------------------------------------------------------------------------------
+A. Search/Product API (Express style pseudo-code)
+----------------------------------------------------------------------
+app.get('/api/product/:site/:siteProductId', async (req, res) => {
+  const key = `product:${req.params.site}:${req.params.siteProductId}`;
+  const cached = await redis.get(key);
+  if (cached) {
+    const parsed = JSON.parse(cached);
+    // If stale, queue background refresh
+    if (isStale(parsed.fetchedAt, thresholdForSite(req.params.site))) {
+      queue.add('refresh_product', { site: req.params.site, siteProductId: req.params.siteProductId });
+    }
+    return res.json({ source: 'cache', ...parsed });
+  }
+  // No cache - try fast sync scrape (bounded)
+  try {
+    const result = await runWithTimeout(fastScrape(req.params.site, req.params.siteProductId), 8000);
+    // validate -> write -> cache -> return
+    const validated = await validateRecord(result);
+    const saved = await upsertProductAtomic(validated);
+    await redis.set(key, JSON.stringify(saved), 'EX', ttlForSite(req.params.site));
+    return res.json({ source: 'fresh', ...saved });
+  } catch (e) {
+    // cannot fetch; return safe empty response and queue background refresh
+    queue.add('refresh_product', { site: req.params.site, siteProductId: req.params.siteProductId });
+    return res.json({ source: 'none', results: [] , message: 'Results are unavailable right now. We are refreshing.' });
+  }
+});
+
+B. Background Worker Job (BullMQ)
+----------------------------------------------------------------------
+- Job type: 'refresh_product' or 'refresh_search'
+- Pull site and product id; try API-first; fallback to Puppeteer; run validation; upsert; update Redis; insert price_history; emit events/metrics.
+
+C. Validation Snippet (JS pseudo)
+----------------------------------------------------------------------
+async function validateRecord(raw) {
+  // Schema check
+  if (!raw.title || !raw.price || !raw.productUrl) throw new Error('schema');
+  const price = Number(parseFloat(raw.price));
+  if (!isFinite(price) || price <= 0) throw new Error('invalid_price');
+  // normalize
+  raw.price_amount = price;
+  raw.price_currency = raw.currency || 'SAR';
+  raw.image_url = validateImageUrl(raw.image_url);
+  // optional fields
+  raw.seller_rating = raw.seller_rating || null;
+  raw.is_valid = true;
+  return raw;
+}
+
+--------------------------------------------------------------------------------
+TESTING & VERIFICATION CHECKLIST (Cursor Agent)
+--------------------------------------------------------------------------------
+For each step below, capture logs and artifacts (HTML snapshots, XHR traces, Redis dumps, DB rows) and attach them to the run report.
+
+PHASE 1 Tests:
+- [ ] Cold product request: delete Redis key, call API -> should block ≤ 10s, return fresh result, Redis key created, DB upserted with is_valid = TRUE.
+- [ ] Cached stale flow: seed Redis with old fetchedAt and is_valid = TRUE -> call API -> returns cached data quickly and queues background refresh.
+- [ ] Cache missing & scraping fails: API returns friendly message and a background job is queued.
+
+PHASE 2 Tests:
+- [ ] Validation rejects invalid records: create malformed raw payload and run validation -> should be rejected and logged.
+- [ ] De-duplication test: send two different payloads representing same site_product_id with different prices -> final DB record uses deterministic rule (lowest price or seller priority).
+- [ ] Atomic upsert: simulate concurrent writes to same (site, site_product_id) and ensure final DB record is consistent (no partial writes).
+
+PHASE 3 Tests:
+- [ ] Metrics collection: simulate search_count_week increments and verify product_metrics updated via Redis flush.
+- [ ] Tiering: assign products to HOT/WARM/COLD and ensure scheduler picks correct items based on last_scraped_at.
+- [ ] Cron execution: run scheduler and ensure only delta items are queued.
+
+PHASE 4 Tests:
+- [ ] is_valid only exposure: ensure API never returns is_valid = FALSE records.
+- [ ] Price history: after repeated scrapes, price_history has entries and the chart data endpoint returns consistent results.
+
+Misc Tests:
+- [ ] Rate limiting & backoff: simulate 429 responses from target sites and ensure agent backs off with exponential backoff.
+- [ ] Proxy rotation: mimic blocked requests and verify rotation avoids complete blocking.
+- [ ] Performance: measure median response time for cached vs fresh requests and ensure acceptable thresholds.
+- [ ] Logs: verify all failures are logged with context and snapshots are stored for investigation.
+
+--------------------------------------------------------------------------------
+OPERATIONAL & DEPLOYMENT NOTES
+--------------------------------------------------------------------------------
+- Use environment variables for all secrets, affiliate tokens, and proxy credentials.
+- Use a process manager (PM2) or container orchestrator to manage worker processes and browser instances.
+- Monitor Redis memory usage and set `maxmemory-policy` to `allkeys-lru`.
+- Maintain a small rotating pool of browser contexts (limit concurrency to avoid memory spikes).
+- Maintain an admin route `/admin/scraper/status` to display last run times, last error, queue size.
+
+--------------------------------------------------------------------------------
+ROLLBACK & SAFE MODES
+--------------------------------------------------------------------------------
+- If new scraper causes systemic failures, provide a flag to set cache-only mode for a site (serve cached data only and pause scraping for that site).
+- Rolling back DB changes: maintain migration scripts and backups before applying ALTER TABLE operations.
+
+--------------------------------------------------------------------------------
+DELIVERABLES (Cursor Agent Implementation Checklist)
+--------------------------------------------------------------------------------
+1. Implement Redis SWR read-through pattern for product & search endpoints.
+2. Implement validation pipeline and atomic upsert logic (JS + SQL).
+3. Create product_metrics table and Redis counters + flush script.
+4. Implement prioritized cron/scheduler that enqueues delta scrapes by tier.
+5. Add worker job implementation (BullMQ) with proxy rotation, UA rotation, and bounded Puppeteer usage.
+6. Add admin health endpoints and monitoring hooks.
+7. Add tests & scripts for all checks listed in TESTING section and produce run reports.
+
+--------------------------------------------------------------------------------
+END OF PLAN
+--------------------------------------------------------------------------------

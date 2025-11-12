@@ -1,0 +1,410 @@
+Looqta — High-Value Feature Plan for Cursor Agent
+================================================
+
+Purpose
+-------
+This document lists **important, reputable, and high-impact features** (not gimmicks) that should be added to Looqta to increase user trust, engagement, and monetization in the KSA market — prioritized, with implementation notes, DB/Redis changes, API endpoints, UI placement, verification tests, and success metrics. This file is intended to be consumed by the cursor agent for direct implementation and verification.
+
+How to use
+----------
+1. Follow the priorities column for development order.
+2. Use the Technical Notes for concrete implementation patterns.
+3. Run the Verification Tests after each feature is implemented.
+4. Track the Success Metrics to measure business impact.
+
+Priority Legend
+---------------
+P0 = Critical / Implement within 0–7 days
+P1 = High impact / 1–3 weeks
+P2 = Medium impact / 3–8 weeks
+P3 = Lower priority / beyond 8 weeks
+
+Feature List (with rationale, priority, and implementation summary)
+-------------------------------------------------------------------
+
+1) Price History & Cross-Source Trend Analysis
+   Rationale: Builds reputation by showing historical evidence of price changes. Users trust sites that show evidence.
+   Priority: P0
+   Summary:
+     - Log daily price points to price_history table for popular products (iPhone pro 17 first).
+     - Compute moving averages (7/30 day) and percent change.
+     - Show interactive chart on Product Page + small sparkline on Product Card.
+   DB:
+     - price_history(product_id, price, currency, source, scraped_at)
+   API:
+     - GET /api/products/:id/history?range=30d
+   UI:
+     - Prominent chart under price area, sparkline in search cards.
+   Verification:
+     - Chart renders with >= 7 data points after 7 days.
+   Success metrics:
+     - Time on product pages, return visits for tracked products.
+
+2) Price Drop Alerts + Email & Push Notifications
+   Rationale: Drives repeat traffic and conversion; highly used feature in price-comparison apps.
+   Priority: P0
+   Summary:
+     - Users set a target price for a product; worker checks latest prices and sends email/push when condition met.
+   DB:
+     - user_price_alerts(user_id, product_id, target_price, currency, is_active, notified_at)
+   API:
+     - POST /api/products/:id/alerts
+     - GET /api/users/:id/alerts
+   UI:
+     - "Set Price Alert" button on Product Page; lightweight modal for target price and notification type.
+   Verification:
+     - Simulate price drop and confirm email & push delivered and notified_at set.
+   Success metrics:
+     - Number of alerts created, alert-triggered open rates, retention.
+
+3) Verified Seller / Trust Badges & Seller Metadata
+   Rationale: Trust drives conversion in markets where buyer certainty is key.
+   Priority: P0
+   Summary:
+     - Store seller rating/count from source (or compute aggregated trust score).
+     - Display badges: "Verified Retailer", "Top Seller", "New Seller — Low Reviews".
+   DB:
+     - products.seller_rating, products.seller_rating_count, products.seller_type
+   API:
+     - product detail includes seller metadata.
+   UI:
+     - Badge near price and seller name; tooltip explaining calculation.
+   Verification:
+     - Seller rating present for Amazon/Noon items; badge displays correctly.
+   Success metrics:
+     - Click-through-rate (CTR) on buy links by badge, bounce rates.
+
+4) Affiliate Integration & Click Tracking
+   Rationale: Primary monetization channel; must be trustworthy and transparent.
+   Priority: P0
+   Summary:
+     - Affiliate fields in DB, redirect route for click tracking.
+     - Ensure affiliate links are used for all outbound buy buttons.
+   DB:
+     - products.affiliate_url, affiliate_clicks(product_id, user_id, timestamp)
+   API:
+     - GET /r/:token -> redirect to affiliate_url (increment counter)
+   UI:
+     - "Buy on [Retailer]" CTA; small "Affiliate link" hint in tooltip or footer.
+   Verification:
+     - Clicks increment; redirects are correct; affiliate params preserved.
+   Success metrics:
+     - Clicks-to-affiliate, affiliate conversion (if available).
+
+5) Stale-While-Revalidate (Redis) with Priority Caching for KSA Hot Items
+   Rationale: Improves UX and perceived responsiveness for hot items (iPhone series).
+   Priority: P0
+   Summary:
+     - Redis keys: search:{query_norm} with fetchedAt and source: stale|fresh.
+     - Serve stale immediately and refresh in background.
+     - Tiered TTLs with higher TTL for hot items and longer stale window.
+   Redis key structure:
+     - search:{query_norm} => {fetchedAt, results, meta}
+   API:
+     - GET /api/search?q=...
+   UI:
+     - Indicate "Results last updated X minutes ago" and a subtle "Refreshing..." if background update in progress.
+   Verification:
+     - Cache hit rate, background job succeeds and updates cache within expected time window.
+   Success metrics:
+     - Average search latency, cache hit ratio, user satisfaction (surveys).
+
+6) Direct API Scraping (Noon / Local Retailers) with Fallback to Puppeteer
+   Rationale: API-based results are faster and more complete; reduces detection and costs.
+   Priority: P0
+   Summary:
+     - Use DevTools to find XHR endpoints; call those endpoints directly with rotating UA & proxy.
+     - If unavailable, use optimized Puppeteer persistent browser.
+   Implementation:
+     - Add per-site scraper module that tries API endpoint first and falls back to headless renderer.
+   Verification:
+     - Result counts parity between API-based and DOM-based; elimination of 1-result problem.
+   Success metrics:
+     - Scrape success rate, average results per search.
+
+7) Localized KSA UX — SAR, VAT, Shipping Estimates & City-Level Filters
+   Rationale: Local relevance increases trust & usefulness in KSA.
+   Priority: P0
+   Summary:
+     - Show prices in SAR with VAT flags, shipping times to Riyadh/Jeddah, filter by "fulfilled by" or same-day delivery.
+   DB:
+     - product_shipping (product_id, retailer_location, shipping_estimate_days)
+   UI:
+     - Filters toolbar, shipping indicator in product cards.
+   Verification:
+     - Shipping flags present for sample retailers, filters work.
+   Success metrics:
+     - Filter use %, conversion lift for same-day flagged items.
+
+8) Price Match/Price Guarantee Program (Policy & UI)
+   Rationale: Unique offering to increase trust — "We verify and honor advertised prices".
+   Priority: P1
+   Summary:
+     - A visible policy page and form to request a manual price check. Use this responsibly (human-in-the-loop).
+   UI:
+     - "Request Price Match" button on product page.
+   Verification:
+     - Process for human review; match decisions logged.
+   Success metrics:
+     - Number of requests, accepted matches, net revenue impact.
+
+9) Coupons & Promo Code Aggregator + Auto-Apply
+   Rationale: Adds value during purchase decision; increases click conversion.
+   Priority: P1
+   Summary:
+     - Scrape coupon sites or accept user-submitted coupons (with moderation and verification).
+     - Attempt an "auto-apply" via affiliate param or pass-through instructions, or present code/steps.
+   DB:
+     - coupons(product_id, code, retailer, expires_at, verified)
+   UI:
+     - Coupon badge on product card + coupon drawer on product page.
+   Verification:
+     - Verify coupon validity via small test requests (or manual verification).
+   Success metrics:
+     - Coupon redemption rate, lift in affiliate clicks.
+
+10) Verified-Buyer Review System (Moderated) & Review Aggregation
+    Rationale: Reviews increase trust; only display verified buyer reviews to avoid manipulation.
+    Priority: P1
+    Summary:
+      - Allow reviews only when a user clicks through an affiliate link (heuristic) or marks purchase done; require moderation; aggregate external reviews where sources allow.
+    DB:
+      - reviews(product_id, user_id, rating, comment, verified, created_at)
+    UI:
+      - Review summary with verified badge; ability to sort by verified.
+    Verification:
+      - Reviews flow works, moderation flags exist.
+    Success metrics:
+      - Review counts, percentage of verified reviews.
+
+11) Product Authenticity / Serial Check POC (Partnership)
+    Rationale: In markets where counterfeit goods are a concern, a verification feature can be a high-trust differentiator.
+    Priority: P2
+    Summary:
+      - Integrate with manufacturer APIs or provide guidance link where users can verify serial numbers (requires partnerships).
+    UI:
+      - "Verify Authenticity" on product detail with step-by-step guidance.
+    Verification:
+      - Partnership or link verified.
+    Success metrics:
+      - Usage of the check, decline in returns reported via partners.
+
+12) Mobile App / PWA with Push Notifications & Offline Cache
+    Rationale: Many shoppers use mobile; push is valuable for alerts.
+    Priority: P1
+    Summary:
+      - Progressive Web App (PWA) with push notifications for price alerts and promotions.
+    Verification:
+      - PWA install prompt works on mobile, push notifications received.
+    Success metrics:
+      - PWA installs, push open rates.
+
+13) Merchant Dashboard & API (B2B Channel)
+    Rationale: Revenue and data partnerships; merchants can list stock/prices directly.
+    Priority: P2
+    Summary:
+      - Offer a secure API or dashboard for merchants to push prices/inventory.
+    DB:
+      - merchants, merchant_products
+    API:
+      - OAuth-protected endpoints for merchant data ingestion.
+    Verification:
+      - Merchant can upload a CSV or call API and see results on front-end.
+    Success metrics:
+      - Merchant sign-ups, data quality improvements.
+
+14) Premium Subscription (Power Users) — Optional Monetization
+    Rationale: Recurring revenue and premium tools for power shoppers.
+    Priority: P2
+    Summary:
+      - Features: more frequent price tracking, SMS alerts, export CSV, comparative analytics, no-ads.
+    UI:
+      - Upsell modal on alerts and product pages.
+    Verification:
+      - Subscription signups and billing end-to-end.
+    Success metrics:
+      - MRR, churn.
+
+15) Localized Content & SEO (Arabic-first for KSA)
+    Rationale: Organic acquisition & trust. Users search in Arabic; need strong SEO.
+    Priority: P0
+    Summary:
+      - Arabic translations, localized metadata, schema.org markup for products, hreflang.
+    Verification:
+      - Pages indexed with correct language, improvement in organic traffic.
+    Success metrics:
+      - SEO traffic, keyword rankings in Arabic for "iPhone pro 17" etc.
+
+16) Clear Ad Policy & Native Ad Integration (Transparent)
+    Rationale: Monetization with transparency preserves trust.
+    Priority: P1
+    Summary:
+      - Reserved native ad slots and sponsored listings with explicit labeling.
+    UI:
+      - "Sponsored" label, distinct background, separate analytics.
+    Verification:
+      - Ads render in placeholders and are tracked.
+    Success metrics:
+      - Ad RPM/CTR, revenue.
+
+17) Click-Fraud and Bot Detection for Affiliate Integrity
+    Rationale: Protect affiliate relationships and conserve revenue.
+    Priority: P1
+    Summary:
+      - Detect rapid-fire clicks, suspicious IPs, impossible conversions; flag for review and block if needed.
+    DB:
+      - affiliate_clicks with metadata and fraud_flags.
+    Verification:
+      - Fraud rules detect synthetic patterns in test harness.
+    Success metrics:
+      - Reduction in suspicious clicks, approvals with partners.
+
+18) Customer Support & Dispute Center
+    Rationale: Reputation builder — human help for price match, disputes, returns guidance.
+    Priority: P2
+    Summary:
+      - Simple ticketing flow integrated with user account and product page.
+    UI:
+      - "Ask for Help" button and status center.
+    Verification:
+      - Ticket created and status updated flows.
+    Success metrics:
+      - Ticket resolution time, NPS improvement.
+
+19) Analytics, Telemetry & Experimentation Platform
+    Rationale: Measure; iterate.
+    Priority: P0
+    Summary:
+      - Track key events: searches, clicks, alerts, purchases (if possible), ad impressions.
+      - A/B test UI changes for CTR.
+    Verification:
+      - Events logged, dashboards show metrics.
+    Success metrics:
+      - Ability to run experiments and pick winning variants.
+
+20) Legal & Compliance — Terms, Privacy, Affiliate Disclosures
+    Rationale: Critical for trust and avoiding partner disputes.
+    Priority: P0
+    Summary:
+      - Update TOS, privacy policy, affiliate disclosures, cookie notice for KSA requirements.
+    Verification:
+      - Legal sign-off; policies accessible in footer.
+    Success metrics:
+      - No legal takedowns, partner acceptance.
+
+Implementation Roadmap (Concrete Steps & Timeline Suggestions)
+----------------------------------------------------------------
+Week 0–1 (Immediate - P0 items)
+  - Add price_history table and alert table migrations.
+  - Implement post-scrape validation and per-scraper timeouts.
+  - Implement persistent Puppeteer instance and direct-API-first scrapers (Noon).
+  - Implement Redis stale-while-revalidate for search keys (hot items list seeded).
+  - Add seller rating fields and affiliate_url fields to products table.
+  - Expose APIs for product history and alert creation.
+  - UI: Price sparkline and "Set Price Alert" modal; affiliate CTA redirect.
+
+Week 2–4 (High impact)
+  - Implement email push worker for alerts; integrate SES or SMTP.
+  - Build price history chart component and backfill price_history for top products.
+  - Integrate affiliate redirect endpoint and click-tracking.
+  - Implement KSA localization (SAR/VAT/Shipping) for top marketplaces.
+  - Start basic coupons aggregator (manual/seed).
+
+Week 4–8 (Medium)
+  - Add verified buyer reviews and seller badges.
+  - Build Merchant Dashboard & API POC.
+  - Implement PWA push notifications and offline caching.
+  - Add ad placeholders and clear sponsored listings UI.
+  - Implement click-fraud detection rules and monitoring.
+
+Week 9+ (Long term)
+  - Product authenticity partnerships.
+  - Price-match program with human-in-the-loop.
+  - Subscription product and expansion of merchant relationships.
+
+DB / Redis / Queue Changes (Summary)
+------------------------------------
+Database:
+  - migrations/2025_add_price_history.sql
+  - ALTER TABLE products ADD (affiliate_url, seller_rating, seller_rating_count, source_sku, shipping_info JSON NULL)
+  - CREATE TABLE price_history (...)
+  - CREATE TABLE user_price_alerts (...)
+
+Redis:
+  - Keys:
+    - search:{query_norm} -> JSON {fetchedAt, results, meta}
+    - product_refresh_jobs:{product_id} -> status
+    - affiliate_clicks_stream or hash for counters
+  - Use BullMQ for background jobs (refresh + alerts worker + merchant ingestion tasks).
+
+API Endpoints (Summary)
+-----------------------
+  - GET /api/search?q=
+  - GET /api/products/:id
+  - GET /api/products/:id/history?range=
+  - POST /api/products/:id/alerts
+  - GET /api/users/:id/alerts
+  - GET /r/:token (affiliate redirect)
+  - POST /api/merchant/upload (merchant API)
+  - GET /api/health
+
+Frontend UI Notes
+-----------------
+  - Product Card: price, sparkline, seller badge, coupon badge, affiliate CTA.
+  - Product Page: full PriceHistoryChart, PriceAlertForm, Seller details, coupons, verified reviews, "Verify Authenticity" or "Request Price Match".
+  - Search Results: sorting toggles (price, shipping time, seller trust), filters (fulfilled by, same-day, seller type).
+  - Header/Footer: Arabic locale selection, currency toggle (SAR locked), affiliate disclosure in footer.
+
+Verification & Monitoring Checklist
+-----------------------------------
+  - Selector tests for each marketplace (sample queries) run nightly.
+  - Scrape success rate and avg results per site monitored and alerted.
+  - Cache hit/miss logs and background refresh success rate.
+  - A/B test metrics for CTA wording and placement.
+  - Fraud detection logs for click anomalies.
+
+KPIs & Success Metrics (what success looks like)
+-----------------------------------------------
+  - +20% repeat visits via alerts within 30 days.
+  - +15% CTR on affiliate CTA after adding trust badges and coupons.
+  - Cache hit rate > 70% for top 100 queries within 2 weeks.
+  - Scrape success rate per site > 90% after fixes.
+  - Increase in organic traffic with Arabic content + schema markup within 3 months.
+
+Security & Legal Considerations
+-------------------------------
+  - Respect robots.txt and partner ToS; prefer affiliate APIs.
+  - Store credentials/affiliate tokens in secrets manager.
+  - Ensure GDPR-like privacy notice and data deletion flow for users.
+  - Rate limit scrapers and use rotating proxies where allowed.
+
+Deliverable Checklist for Cursor Agent (Actionable)
+---------------------------------------------------
+  1) Run DB migrations: price_history + price_alerts + product columns.
+  2) Add post-scrape validation & timeouts across scrapers.
+  3) Implement persistent Puppeteer + API-first scrapers (Noon).
+  4) Implement Redis S-W-R: serve stale, trigger BullMQ update job.
+  5) Expose price history API and render chart in frontend.
+  6) Add price alert UI & backend worker (email/push).
+  7) Add affiliate redirect endpoint and integrate affiliate urls.
+  8) Add seller rating ingestion & display logic.
+  9) Add Arabic locale + KSA shipping/VAT labels and filters.
+ 10) Add ad placeholders and sponsored listing markup for future monetization.
+ 11) Set up monitoring: scrape metrics, cache metrics, fraud metrics.
+ 12) Run verification tests for "iPhone pro 17" and other top products. Fix any failing selectors.
+ 13) Backfill price_history for top products using historical scrape runs (if available).
+
+Appendix — Quick Implementation Snippets (for agent copy/paste)
+---------------------------------------------------------------
+See next steps below; implement these where appropriate in your backend scraper modules and workers:
+  - Validation snippet:
+    function isValidProduct(p) { ... } (same as in earlier developer message)
+  - Timeout wrapper: runWithTimeout(promise, ms)
+  - Persistent puppeteer pattern: startBrowser(), withPage()
+  - Redis key usage: search:{query_norm}
+
+Contact & Handoff Notes
+-----------------------
+If a step requires manual inspection (e.g., finding Noon.com hidden API), save HTML/XHR snapshots to /tmp/snapshots with naming: {site}-{query}-{timestamp}.html and attach to the bug/PR for human review.
+
+End of file.
