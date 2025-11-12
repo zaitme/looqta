@@ -112,18 +112,33 @@ async function testBackendEndpoint() {
 // Test 4: CSS file loads
 async function testCSSFile() {
   return new Promise((resolve, reject) => {
-    http.get(`${FRONTEND_URL}/_next/static/css/app/layout.css`, (res) => {
-      if (res.statusCode === 200 || res.statusCode === 404) {
-        // CSS might be inlined or in different location
-        console.log('✅ Test 4: CSS check (may be inlined)');
-        resolve(true);
+    http.get(`${FRONTEND_URL}/roar`, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        // Check if CSS link is in HTML
+        const hasStylesheet = data.includes('stylesheet') || data.includes('.css');
+        const hasTailwindClasses = data.includes('bg-gradient-to-br') && data.includes('animate-spin');
+        
+        if (hasStylesheet || hasTailwindClasses) {
+          console.log('✅ Test 4: CSS is loaded');
+          console.log(`   - Stylesheet link: ${hasStylesheet ? '✓' : 'CSS may be inlined'}`);
+          console.log(`   - Tailwind classes: ${hasTailwindClasses ? '✓' : '✗'}`);
+          resolve(true);
+        } else {
+          console.log('❌ Test 4: CSS not found in HTML');
+          console.log('   - This indicates CSS is not being loaded');
+          reject(new Error('CSS not loaded'));
+        }
+      });
+    }).on('error', (err) => {
+      if (err.code === 'ECONNREFUSED') {
+        console.log('⚠️  Test 4: Frontend server not running');
+        console.log('   - Start frontend with: cd frontend && npm run dev');
+        resolve(true); // Not critical if server not running
       } else {
-        console.log(`⚠️  Test 4: CSS file check returned ${res.statusCode}`);
-        resolve(true); // Not critical
+        reject(err);
       }
-    }).on('error', () => {
-      console.log('⚠️  Test 4: Could not check CSS file (may be inlined)');
-      resolve(true); // Not critical
     });
   });
 }
