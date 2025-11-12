@@ -251,7 +251,7 @@ async function updateTiers() {
 async function getProductsForScraping(tier, intervalHours, limit = 100) {
   try {
     const [rows] = await db.execute(
-      `SELECT pm.product_id, p.site, p.site_product_id, p.url
+      `SELECT pm.product_id, p.site, p.site_product_id, COALESCE(p.affiliate_url, p.url) as url
        FROM product_metrics pm
        LEFT JOIN products p ON pm.product_id = p.product_id
        WHERE pm.tier = ?

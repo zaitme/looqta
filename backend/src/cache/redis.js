@@ -11,7 +11,9 @@ const logger = require('../utils/logger');
 // Note: If Redis uses simple password authentication (not ACLs), don't set username
 // Only set username if explicitly provided and not 'default' (which indicates simple auth)
 const redisUser = process.env.REDIS_USER;
+const redisPassword = process.env.REDIS_PASSWORD;
 const useUsername = redisUser && redisUser !== 'default' && redisUser.trim() !== '';
+const usePassword = redisPassword && redisPassword.trim() !== '';
 
 const connectionOptions = {
   host: process.env.REDIS_HOST || '192.168.8.74',
@@ -19,9 +21,8 @@ const connectionOptions = {
   // Only include username if Redis uses ACLs (not simple password auth)
   ...(useUsername ? { username: redisUser } : {}),
   // Only include password if explicitly set (Redis may not require authentication)
-  ...(process.env.REDIS_PASSWORD && process.env.REDIS_PASSWORD.trim() !== '' 
-    ? { password: process.env.REDIS_PASSWORD } 
-    : {}),
+  // If password is set but empty string, don't include it (Redis will use no auth)
+  ...(usePassword ? { password: redisPassword } : {}),
   // Recommended options for robust connections
   reconnectOnError: (err) => {
     // Attempt to reconnect on ETIMEDOUT or ECONNRESET
