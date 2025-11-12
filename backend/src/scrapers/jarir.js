@@ -749,5 +749,6 @@ async function performSearch(query, searchUrl) {
 
 module.exports = {
   name: 'jarir',
+  site: 'jarir.com',
   search
 };

@@ -313,5 +313,6 @@ async function performSearch(query, searchUrl) {
 
 module.exports = {
   name: 'extra',
+  site: 'extra.com',
   search
 };

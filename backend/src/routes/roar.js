@@ -204,8 +204,9 @@ router.post('/auth/login', async (req, res) => {
     res.cookie('roar_session', sessionToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 24 * 60 * 60 * 1000 // 24 hours
+      sameSite: 'lax', // Changed from 'strict' to 'lax' for cross-origin support
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      path: '/' // Ensure cookie is available for all paths
     });
     
     const duration = Date.now() - startTime;
@@ -932,20 +933,68 @@ router.delete('/ads/:id', requireAuth, auditLog('DELETE_AD', 'ad_placement'), as
 
 /**
  * GET /roar/scrapers
- * Get scraper status
+ * Get all scraper configurations with full details
  */
 router.get('/scrapers', requireAuth, async (req, res) => {
   try {
-    const settings = registry.getScraperSettings();
-    const allScrapers = [
-      { name: 'amazon', displayName: 'Amazon', enabled: settings.amazon?.enabled !== false },
-      { name: 'noon', displayName: 'Noon', enabled: settings.noon?.enabled !== false },
-      { name: 'jarir', displayName: 'Jarir', enabled: settings.jarir?.enabled !== false },
-      { name: 'panda', displayName: 'Panda', enabled: settings.panda?.enabled !== false },
-      { name: 'extra', displayName: 'Extra', enabled: settings.extra?.enabled !== false }
-    ];
+    // Try to load from database first
+    let configs = [];
+    try {
+      await db.execute('SELECT 1');
+      [configs] = await db.execute(`
+        SELECT sc.*, au.username as last_modified_by_username
+        FROM scraper_configs sc
+        LEFT JOIN admin_users au ON sc.last_modified_by = au.id
+        ORDER BY sc.scraper_name
+      `);
+    } catch (dbError) {
+      logger.warn('Database unavailable, using in-memory settings', { error: dbError.message });
+      // Fallback to in-memory settings
+      const settings = registry.getScraperSettings();
+      const scraperNames = ['amazon', 'noon', 'jarir', 'panda', 'extra'];
+      const displayNames = {
+        amazon: 'Amazon',
+        noon: 'Noon',
+        jarir: 'Jarir',
+        panda: 'Panda',
+        extra: 'Extra'
+      };
+      
+      configs = scraperNames.map(name => ({
+        scraper_name: name,
+        display_name: displayNames[name],
+        enabled: settings[name]?.enabled !== false ? 1 : 0,
+        timeout_ms: settings[name]?.timeout_ms || 30000,
+        max_retries: settings[name]?.max_retries || 3,
+        retry_delay_ms: settings[name]?.retry_delay_ms || 1000,
+        max_results: settings[name]?.max_results || 8,
+        rate_limit_per_sec: settings[name]?.rate_limit_per_sec || 2.00,
+        concurrency: settings[name]?.concurrency || 1,
+        custom_domain: settings[name]?.custom_domain || null,
+        user_agent: settings[name]?.user_agent || null,
+        extra_config: settings[name]?.extra_config || null
+      }));
+    }
     
-    res.json({ success: true, scrapers: allScrapers });
+    const scrapers = configs.map(config => ({
+      id: config.id,
+      name: config.scraper_name,
+      displayName: config.display_name,
+      enabled: config.enabled === 1,
+      timeoutMs: config.timeout_ms,
+      maxRetries: config.max_retries,
+      retryDelayMs: config.retry_delay_ms,
+      maxResults: config.max_results,
+      rateLimitPerSec: parseFloat(config.rate_limit_per_sec),
+      concurrency: config.concurrency,
+      customDomain: config.custom_domain,
+      userAgent: config.user_agent,
+      extraConfig: config.extra_config ? (typeof config.extra_config === 'string' ? JSON.parse(config.extra_config) : config.extra_config) : null,
+      lastModifiedBy: config.last_modified_by_username,
+      updatedAt: config.updated_at
+    }));
+    
+    res.json({ success: true, scrapers });
   } catch (error) {
     logger.error('Failed to get scrapers', { error: error.message });
     res.status(500).json({ success: false, error: error.message });
@@ -953,8 +1002,265 @@ router.get('/scrapers', requireAuth, async (req, res) => {
 });
 
 /**
- * POST /roar/scrapers
- * Update scraper settings
+ * GET /roar/scrapers/:name
+ * Get specific scraper configuration
+ */
+router.get('/scrapers/:name', requireAuth, async (req, res) => {
+  try {
+    const { name } = req.params;
+    
+    if (!['amazon', 'noon', 'jarir', 'panda', 'extra'].includes(name)) {
+      return res.status(400).json({ success: false, error: 'Invalid scraper name' });
+    }
+    
+    let config;
+    try {
+      await db.execute('SELECT 1');
+      const [configs] = await db.execute(
+        'SELECT * FROM scraper_configs WHERE scraper_name = ?',
+        [name]
+      );
+      
+      if (configs.length === 0) {
+        // Return default config if not in database
+        const settings = registry.getScraperSettings();
+        const defaultConfig = settings[name] || { enabled: false };
+        config = {
+          scraper_name: name,
+          display_name: name.charAt(0).toUpperCase() + name.slice(1),
+          enabled: defaultConfig.enabled ? 1 : 0,
+          timeout_ms: defaultConfig.timeout_ms || 30000,
+          max_retries: defaultConfig.max_retries || 3,
+          retry_delay_ms: defaultConfig.retry_delay_ms || 1000,
+          max_results: defaultConfig.max_results || 8,
+          rate_limit_per_sec: defaultConfig.rate_limit_per_sec || 2.00,
+          concurrency: defaultConfig.concurrency || 1,
+          custom_domain: defaultConfig.custom_domain || null,
+          user_agent: defaultConfig.user_agent || null,
+          extra_config: defaultConfig.extra_config || null
+        };
+      } else {
+        config = configs[0];
+      }
+    } catch (dbError) {
+      logger.warn('Database unavailable, using in-memory settings', { error: dbError.message });
+      const settings = registry.getScraperSettings();
+      const defaultConfig = settings[name] || { enabled: false };
+      config = {
+        scraper_name: name,
+        display_name: name.charAt(0).toUpperCase() + name.slice(1),
+        enabled: defaultConfig.enabled ? 1 : 0,
+        timeout_ms: defaultConfig.timeout_ms || 30000,
+        max_retries: defaultConfig.max_retries || 3,
+        retry_delay_ms: defaultConfig.retry_delay_ms || 1000,
+        max_results: defaultConfig.max_results || 8,
+        rate_limit_per_sec: defaultConfig.rate_limit_per_sec || 2.00,
+        concurrency: defaultConfig.concurrency || 1,
+        custom_domain: defaultConfig.custom_domain || null,
+        user_agent: defaultConfig.user_agent || null,
+        extra_config: defaultConfig.extra_config || null
+      };
+    }
+    
+    res.json({
+      success: true,
+      scraper: {
+        id: config.id,
+        name: config.scraper_name,
+        displayName: config.display_name,
+        enabled: config.enabled === 1,
+        timeoutMs: config.timeout_ms,
+        maxRetries: config.max_retries,
+        retryDelayMs: config.retry_delay_ms,
+        maxResults: config.max_results,
+        rateLimitPerSec: parseFloat(config.rate_limit_per_sec),
+        concurrency: config.concurrency,
+        customDomain: config.custom_domain,
+        userAgent: config.user_agent,
+        extraConfig: config.extra_config ? (typeof config.extra_config === 'string' ? JSON.parse(config.extra_config) : config.extra_config) : null,
+        updatedAt: config.updated_at
+      }
+    });
+  } catch (error) {
+    logger.error('Failed to get scraper', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * PUT /roar/scrapers/:name
+ * Update specific scraper configuration
+ */
+router.put('/scrapers/:name', requireAuth, requireRole('super_admin', 'admin'), auditLog('UPDATE_SCRAPER', 'scraper'), async (req, res) => {
+  try {
+    const { name } = req.params;
+    const {
+      enabled,
+      timeoutMs,
+      maxRetries,
+      retryDelayMs,
+      maxResults,
+      rateLimitPerSec,
+      concurrency,
+      customDomain,
+      userAgent,
+      extraConfig
+    } = req.body;
+    
+    if (!['amazon', 'noon', 'jarir', 'panda', 'extra'].includes(name)) {
+      return res.status(400).json({ success: false, error: 'Invalid scraper name' });
+    }
+    
+    // Validate inputs
+    if (enabled !== undefined && typeof enabled !== 'boolean') {
+      return res.status(400).json({ success: false, error: 'enabled must be boolean' });
+    }
+    if (timeoutMs !== undefined && (typeof timeoutMs !== 'number' || timeoutMs < 1000)) {
+      return res.status(400).json({ success: false, error: 'timeoutMs must be >= 1000' });
+    }
+    if (maxRetries !== undefined && (typeof maxRetries !== 'number' || maxRetries < 0 || maxRetries > 10)) {
+      return res.status(400).json({ success: false, error: 'maxRetries must be between 0 and 10' });
+    }
+    if (maxResults !== undefined && (typeof maxResults !== 'number' || maxResults < 1 || maxResults > 10000)) {
+      return res.status(400).json({ success: false, error: 'maxResults must be between 1 and 10000' });
+    }
+    if (rateLimitPerSec !== undefined && (typeof rateLimitPerSec !== 'number' || rateLimitPerSec < 0.1 || rateLimitPerSec > 100)) {
+      return res.status(400).json({ success: false, error: 'rateLimitPerSec must be between 0.1 and 100' });
+    }
+    if (concurrency !== undefined && (typeof concurrency !== 'number' || concurrency < 1 || concurrency > 10)) {
+      return res.status(400).json({ success: false, error: 'concurrency must be between 1 and 10' });
+    }
+    
+    try {
+      await db.execute('SELECT 1');
+      
+      // Check if config exists
+      const [existing] = await db.execute(
+        'SELECT id FROM scraper_configs WHERE scraper_name = ?',
+        [name]
+      );
+      
+      const extraConfigJson = extraConfig ? JSON.stringify(extraConfig) : null;
+      
+      if (existing.length > 0) {
+        // Update existing
+        await db.execute(
+          `UPDATE scraper_configs SET
+            enabled = COALESCE(?, enabled),
+            timeout_ms = COALESCE(?, timeout_ms),
+            max_retries = COALESCE(?, max_retries),
+            retry_delay_ms = COALESCE(?, retry_delay_ms),
+            max_results = COALESCE(?, max_results),
+            rate_limit_per_sec = COALESCE(?, rate_limit_per_sec),
+            concurrency = COALESCE(?, concurrency),
+            custom_domain = ?,
+            user_agent = ?,
+            extra_config = ?,
+            last_modified_by = ?
+          WHERE scraper_name = ?`,
+          [
+            enabled !== undefined ? (enabled ? 1 : 0) : null,
+            timeoutMs || null,
+            maxRetries || null,
+            retryDelayMs || null,
+            maxResults || null,
+            rateLimitPerSec || null,
+            concurrency || null,
+            customDomain || null,
+            userAgent || null,
+            extraConfigJson,
+            req.user.id,
+            name
+          ]
+        );
+      } else {
+        // Insert new
+        const displayNames = {
+          amazon: 'Amazon',
+          noon: 'Noon',
+          jarir: 'Jarir',
+          panda: 'Panda',
+          extra: 'Extra'
+        };
+        
+        await db.execute(
+          `INSERT INTO scraper_configs 
+          (scraper_name, display_name, enabled, timeout_ms, max_retries, retry_delay_ms, max_results, rate_limit_per_sec, concurrency, custom_domain, user_agent, extra_config, last_modified_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            name,
+            displayNames[name] || name,
+            enabled !== undefined ? (enabled ? 1 : 0) : 1,
+            timeoutMs || 30000,
+            maxRetries || 3,
+            retryDelayMs || 1000,
+            maxResults || 8,
+            rateLimitPerSec || 2.00,
+            concurrency || 1,
+            customDomain || null,
+            userAgent || null,
+            extraConfigJson,
+            req.user.id
+          ]
+        );
+      }
+      
+      // Reload settings from database
+      await registry.loadScraperSettings();
+      
+      // Get updated config
+      const [updated] = await db.execute(
+        'SELECT * FROM scraper_configs WHERE scraper_name = ?',
+        [name]
+      );
+      
+      res.json({
+        success: true,
+        scraper: {
+          name: updated[0].scraper_name,
+          displayName: updated[0].display_name,
+          enabled: updated[0].enabled === 1,
+          timeoutMs: updated[0].timeout_ms,
+          maxRetries: updated[0].max_retries,
+          retryDelayMs: updated[0].retry_delay_ms,
+          maxResults: updated[0].max_results,
+          rateLimitPerSec: parseFloat(updated[0].rate_limit_per_sec),
+          concurrency: updated[0].concurrency,
+          customDomain: updated[0].custom_domain,
+          userAgent: updated[0].user_agent,
+          extraConfig: updated[0].extra_config ? JSON.parse(updated[0].extra_config) : null,
+          updatedAt: updated[0].updated_at
+        }
+      });
+    } catch (dbError) {
+      logger.warn('Database unavailable, updating in-memory only', { error: dbError.message });
+      // Fallback to in-memory update
+      const settings = {};
+      settings[name] = {
+        enabled: enabled !== undefined ? enabled : registry.getScraperSettings()[name]?.enabled !== false,
+        timeout_ms: timeoutMs || registry.getScraperSettings()[name]?.timeout_ms || 30000,
+        max_retries: maxRetries !== undefined ? maxRetries : registry.getScraperSettings()[name]?.max_retries || 3,
+        retry_delay_ms: retryDelayMs || registry.getScraperSettings()[name]?.retry_delay_ms || 1000,
+        max_results: maxResults || registry.getScraperSettings()[name]?.max_results || 8,
+        rate_limit_per_sec: rateLimitPerSec || registry.getScraperSettings()[name]?.rate_limit_per_sec || 2.00,
+        concurrency: concurrency || registry.getScraperSettings()[name]?.concurrency || 1,
+        custom_domain: customDomain !== undefined ? customDomain : registry.getScraperSettings()[name]?.custom_domain,
+        user_agent: userAgent !== undefined ? userAgent : registry.getScraperSettings()[name]?.user_agent,
+        extra_config: extraConfig !== undefined ? extraConfig : registry.getScraperSettings()[name]?.extra_config
+      };
+      
+      registry.updateScraperSettings(settings);
+      res.json({ success: true, scrapers: registry.getScraperSettings() });
+    }
+  } catch (error) {
+    logger.error('Failed to update scraper', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /roar/scrapers (legacy - for backward compatibility)
+ * Update multiple scraper settings (enable/disable only)
  */
 router.post('/scrapers', requireAuth, requireRole('super_admin', 'admin'), auditLog('UPDATE_SCRAPERS', 'scraper'), async (req, res) => {
   try {
@@ -964,16 +1270,33 @@ router.post('/scrapers', requireAuth, requireRole('super_admin', 'admin'), audit
       return res.status(400).json({ success: false, error: 'Invalid scrapers data' });
     }
     
-    const settings = {};
-    Object.keys(scrapers).forEach(scraperName => {
-      if (['amazon', 'noon', 'jarir', 'panda', 'extra'].includes(scraperName)) {
-        settings[scraperName] = { enabled: scrapers[scraperName] === true };
+    try {
+      await db.execute('SELECT 1');
+      
+      // Update enabled status for each scraper
+      for (const [scraperName, enabled] of Object.entries(scrapers)) {
+        if (['amazon', 'noon', 'jarir', 'panda', 'extra'].includes(scraperName)) {
+          await db.execute(
+            'UPDATE scraper_configs SET enabled = ?, last_modified_by = ? WHERE scraper_name = ?',
+            [enabled === true ? 1 : 0, req.user.id, scraperName]
+          );
+        }
       }
-    });
+      
+      // Reload settings
+      await registry.loadScraperSettings();
+    } catch (dbError) {
+      logger.warn('Database unavailable, updating in-memory only', { error: dbError.message });
+      const settings = {};
+      Object.keys(scrapers).forEach(scraperName => {
+        if (['amazon', 'noon', 'jarir', 'panda', 'extra'].includes(scraperName)) {
+          settings[scraperName] = { enabled: scrapers[scraperName] === true };
+        }
+      });
+      registry.updateScraperSettings(settings);
+    }
     
-    registry.updateScraperSettings(settings);
     const updatedSettings = registry.getScraperSettings();
-    
     res.json({ success: true, scrapers: updatedSettings });
   } catch (error) {
     logger.error('Failed to update scrapers', { error: error.message });

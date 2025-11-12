@@ -99,14 +99,6 @@ export default function Page(){
           <p className="text-lg md:text-xl text-white/80 font-medium animate-fadeInUp" style={{ animationDelay: '0.2s' }}>
             Compare prices from Amazon, Noon, and more in real-time
           </p>
-          <div className="mt-6 animate-fadeInUp" style={{ animationDelay: '0.3s' }}>
-            <a 
-              href="/roar" 
-              className="inline-block px-6 py-3 bg-white/20 hover:bg-white/30 text-white font-semibold rounded-xl backdrop-blur-sm border border-white/30 transition-all hover:scale-105"
-            >
-              ROAR Admin Console
-            </a>
-          </div>
         </div>
       </div>
 

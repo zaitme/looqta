@@ -305,5 +305,6 @@ async function performSearch(query, searchUrl) {
 
 module.exports = {
   name: 'panda',
+  site: 'panda.com.sa',
   search
 };

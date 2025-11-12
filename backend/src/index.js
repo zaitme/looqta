@@ -18,6 +18,7 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
 const express = require('express');
 const cookieParser = require('cookie-parser');
+const cors = require('cors');
 const logger = require('./utils/logger');
 const app = express();
 
@@ -39,6 +40,9 @@ const priceAlertWorker = require('./workers/price-alert-worker');
 // Utility imports
 const { initializeDefaultAdmin, cleanExpiredSessions } = require('./utils/auth');
 const { router: workersRouter, setBackgroundWorker } = require('./routes/workers');
+
+// SWR System imports
+const scraperAgent = require('./agents/scraperAgent');
 
 // Security middleware imports
 const {
@@ -83,6 +87,31 @@ process.on('uncaughtException', (error) => {
 // Trust proxy setting
 // Required when behind reverse proxy (nginx, load balancer) for accurate IP addresses
 app.set('trust proxy', 1);
+
+// CORS middleware - allow requests from frontend (including LAN access)
+// Allow requests from localhost, server IP, and any IP in the 192.168.x.x range
+const allowedOrigins = [
+  'http://localhost:3000',
+  `http://192.168.8.111:3000`, // Server IP
+  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : [])
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Allow requests from allowed origins or any 192.168.x.x IP
+    if (allowedOrigins.includes(origin) || /^http:\/\/192\.168\.\d+\.\d+:3000$/.test(origin)) {
+      callback(null, true);
+    } else {
+      callback(null, true); // Allow all for development - restrict in production
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-session-token']
+}));
 
 // Security headers middleware
 // Adds security headers to all responses (CSP, HSTS, X-Frame-Options, etc.)
@@ -151,6 +180,10 @@ app.use('/roar', roarRouter);
 
 // Product routes
 app.use('/api/products', productsRouter);
+
+// SWR Product routes (alternative endpoint)
+const productsSwrRouter = require('./routes/products-swr');
+app.use('/api/products-swr', productsSwrRouter);
 
 // User routes (public API)
 app.use('/api/users', usersRouter);
@@ -223,7 +256,8 @@ setBackgroundWorker(backgroundWorker);
  * Initialize services and start listening on configured port
  */
 const port = parseInt(process.env.PORT || '4000', 10);
-app.listen(port, async () => {
+const host = process.env.HOST || '0.0.0.0';
+app.listen(port, host, async () => {
   logger.info(`🚀 Looqta backend server started`, { 
     port,
     nodeEnv: process.env.NODE_ENV || 'development',
@@ -284,6 +318,18 @@ app.listen(port, async () => {
       logger.info('Price alert worker started', { intervalMinutes: alertInterval });
     } else {
       logger.info('Price alert worker disabled via ENABLE_PRICE_ALERTS=false');
+    }
+    
+    // Initialize SWR Scraper Agent
+    // Only starts if not explicitly disabled
+    if (process.env.ENABLE_SWR_AGENT !== 'false') {
+      const worker = scraperAgent.initialize();
+      logger.info('SWR Scraper Agent initialized', { 
+        concurrency: 3,
+        jobTypes: ['USER_TRIGGERED_SCRAPE', 'DELTA_REFRESH']
+      });
+    } else {
+      logger.info('SWR Scraper Agent disabled via ENABLE_SWR_AGENT=false');
     }
     
     logger.info('✅ All services initialized successfully');

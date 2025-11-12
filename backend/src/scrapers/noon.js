@@ -823,5 +823,6 @@ async function performSearch(query, searchUrl) {
 
 module.exports = { 
   search,
-  name: 'noon'
+  name: 'noon',
+  site: 'noon.com'
 };

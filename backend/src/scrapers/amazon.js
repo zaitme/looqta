@@ -505,5 +505,6 @@ async function performSearch(query, searchUrl) {
 
 module.exports = { 
   search,
-  name: 'amazon'
+  name: 'amazon',
+  site: 'amazon.sa'
 };
