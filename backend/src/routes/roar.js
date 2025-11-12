@@ -1334,6 +1334,204 @@ router.get('/cache/stats', requireAuth, async (req, res) => {
 });
 
 /**
+ * GET /roar/cache/keys
+ * List all cache keys (with optional pattern filter)
+ */
+router.get('/cache/keys', requireAuth, requireRole('super_admin', 'admin'), async (req, res) => {
+  try {
+    const pattern = req.query.pattern || '*';
+    
+    let connected = false;
+    try {
+      await cache.ping();
+      connected = true;
+    } catch (e) {
+      connected = false;
+    }
+    
+    if (!connected) {
+      return res.json({ success: true, keys: [], connected: false });
+    }
+    
+    const keys = await cache.keys(pattern);
+    
+    // Get TTL and value preview for each key
+    const keysWithInfo = await Promise.all(keys.map(async (key) => {
+      try {
+        const ttl = await cache.ttl(key);
+        const value = await cache.get(key);
+        let valuePreview = null;
+        let valueType = 'string';
+        
+        if (value) {
+          try {
+            const parsed = JSON.parse(value);
+            valueType = Array.isArray(parsed) ? 'array' : typeof parsed;
+            if (typeof parsed === 'object') {
+              valuePreview = Array.isArray(parsed) 
+                ? `Array(${parsed.length} items)`
+                : `Object(${Object.keys(parsed).length} keys)`;
+            } else {
+              valuePreview = String(value).substring(0, 100);
+            }
+          } catch (e) {
+            valuePreview = String(value).substring(0, 100);
+          }
+        }
+        
+        return {
+          key,
+          ttl: ttl > 0 ? ttl : null, // -1 means no expiration, -2 means key doesn't exist
+          valuePreview,
+          valueType,
+          size: value ? Buffer.byteLength(value, 'utf8') : 0
+        };
+      } catch (e) {
+        return {
+          key,
+          ttl: null,
+          valuePreview: 'Error reading',
+          valueType: 'unknown',
+          size: 0
+        };
+      }
+    }));
+    
+    res.json({ success: true, keys: keysWithInfo, connected: true, pattern });
+  } catch (error) {
+    logger.error('Failed to get cache keys', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /roar/cache/key/:key
+ * Get specific cache key value
+ */
+router.get('/cache/key/:key', requireAuth, requireRole('super_admin', 'admin'), async (req, res) => {
+  try {
+    const key = decodeURIComponent(req.params.key);
+    
+    let connected = false;
+    try {
+      await cache.ping();
+      connected = true;
+    } catch (e) {
+      connected = false;
+    }
+    
+    if (!connected) {
+      return res.status(503).json({ success: false, error: 'Cache not connected' });
+    }
+    
+    const value = await cache.get(key);
+    const ttl = await cache.ttl(key);
+    
+    if (value === null) {
+      return res.status(404).json({ success: false, error: 'Key not found' });
+    }
+    
+    let parsedValue = value;
+    let valueType = 'string';
+    try {
+      parsedValue = JSON.parse(value);
+      valueType = Array.isArray(parsedValue) ? 'array' : typeof parsedValue;
+    } catch (e) {
+      // Not JSON, keep as string
+    }
+    
+    res.json({
+      success: true,
+      key,
+      value: parsedValue,
+      valueType,
+      ttl: ttl > 0 ? ttl : null,
+      size: Buffer.byteLength(value, 'utf8')
+    });
+  } catch (error) {
+    logger.error('Failed to get cache key', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /roar/cache/key
+ * Set a cache key
+ */
+router.post('/cache/key', requireAuth, requireRole('super_admin', 'admin'), auditLog('SET_CACHE_KEY', 'cache'), async (req, res) => {
+  try {
+    const { key, value, ttl } = req.body;
+    
+    if (!key) {
+      return res.status(400).json({ success: false, error: 'Key is required' });
+    }
+    
+    if (value === undefined || value === null) {
+      return res.status(400).json({ success: false, error: 'Value is required' });
+    }
+    
+    let connected = false;
+    try {
+      await cache.ping();
+      connected = true;
+    } catch (e) {
+      connected = false;
+    }
+    
+    if (!connected) {
+      return res.status(503).json({ success: false, error: 'Cache not connected' });
+    }
+    
+    // Serialize value to JSON if it's an object or array
+    const serializedValue = typeof value === 'string' ? value : JSON.stringify(value);
+    
+    if (ttl && ttl > 0) {
+      await cache.setex(key, ttl, serializedValue);
+    } else {
+      await cache.set(key, serializedValue);
+    }
+    
+    res.json({ success: true, message: 'Cache key set successfully', key });
+  } catch (error) {
+    logger.error('Failed to set cache key', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * DELETE /roar/cache/key/:key
+ * Delete a specific cache key
+ */
+router.delete('/cache/key/:key', requireAuth, requireRole('super_admin', 'admin'), auditLog('DELETE_CACHE_KEY', 'cache'), async (req, res) => {
+  try {
+    const key = decodeURIComponent(req.params.key);
+    
+    let connected = false;
+    try {
+      await cache.ping();
+      connected = true;
+    } catch (e) {
+      connected = false;
+    }
+    
+    if (!connected) {
+      return res.status(503).json({ success: false, error: 'Cache not connected' });
+    }
+    
+    const deleted = await cache.del(key);
+    
+    if (deleted === 0) {
+      return res.status(404).json({ success: false, error: 'Key not found' });
+    }
+    
+    res.json({ success: true, message: 'Cache key deleted successfully', key });
+  } catch (error) {
+    logger.error('Failed to delete cache key', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * POST /roar/cache/clear
  * Clear cache
  */

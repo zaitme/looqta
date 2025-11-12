@@ -246,6 +246,22 @@ module.exports = {
       throw e;
     }
   },
+  ttl: async (key) => {
+    try {
+      return await redis.ttl(key);
+    } catch(e) {
+      logger.error('Redis ttl failed', { key, error: e.message });
+      return -2; // Key doesn't exist
+    }
+  },
+  setex: async (key, seconds, value) => {
+    try {
+      return await redis.setex(key, seconds, value);
+    } catch(e) {
+      logger.error('Redis setex failed', { key, seconds, error: e.message });
+      throw e;
+    }
+  },
   client: redis,
   isStale,
   getTtlForTier,

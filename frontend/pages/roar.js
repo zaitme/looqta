@@ -238,10 +238,6 @@ function LoginForm({ onLogin }) {
             )}
           </button>
         </form>
-
-        <div className="mt-6 text-center">
-          <p className="text-xs text-gray-500 font-medium">Default credentials: zaitme / highrise</p>
-        </div>
       </div>
     </div>
   );
@@ -765,17 +761,341 @@ function CreateUserForm({ onClose, onSuccess }) {
  * @component
  */
 function TokenManagement() {
+  const [tokens, setTokens] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [error, setError] = useState(null);
+  const [newToken, setNewToken] = useState(null);
+
+  useEffect(() => {
+    loadTokens();
+  }, []);
+
+  const loadTokens = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await fetch(`${API_BASE}/tokens`, {
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTokens(data.tokens || []);
+      } else {
+        setError(data.error || 'Failed to load tokens');
+      }
+    } catch (error) {
+      console.error('Failed to load tokens:', error);
+      setError('Failed to load tokens. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (tokenId) => {
+    if (!confirm('Are you sure you want to delete this token? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/tokens/${tokenId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (data.success) {
+        await loadTokens();
+      } else {
+        setError(data.error || 'Failed to delete token');
+      }
+    } catch (error) {
+      console.error('Failed to delete token:', error);
+      setError('Failed to delete token. Please try again.');
+    }
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Never';
+    return new Date(dateString).toLocaleString();
+  };
+
+  const isExpired = (expiresAt) => {
+    if (!expiresAt) return false;
+    return new Date(expiresAt) < new Date();
+  };
+
   return (
     <div>
-      <div className="mb-8">
-        <h2 className="text-4xl lg:text-5xl font-black bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">API Token Management</h2>
-        <p className="text-gray-600 font-semibold">Manage API tokens for external integrations</p>
-      </div>
-      <div className="bg-white/70 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-xl p-12 text-center">
-        <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-3xl flex items-center justify-center shadow-2xl">
-          <span className="text-5xl">🔑</span>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        <div>
+          <h2 className="text-4xl lg:text-5xl font-black bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">API Token Management</h2>
+          <p className="text-gray-600 font-semibold">Manage API tokens for external integrations</p>
         </div>
-        <p className="text-gray-600 font-semibold text-lg">Token management interface coming soon...</p>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98] duration-200"
+        >
+          + Create Token
+        </button>
+      </div>
+
+      {showCreate && (
+        <CreateTokenForm
+          onClose={() => {
+            setShowCreate(false);
+            setNewToken(null);
+          }}
+          onSuccess={(token) => {
+            setShowCreate(false);
+            setNewToken(token);
+            loadTokens();
+          }}
+        />
+      )}
+
+      {newToken && (
+        <div className="mb-6 bg-white/70 backdrop-blur-xl rounded-2xl border-2 border-green-200 p-6 shadow-xl">
+          <div className="flex items-start justify-between">
+            <div className="flex-1">
+              <h3 className="text-xl font-black text-green-700 mb-2">Token Created Successfully!</h3>
+              <p className="text-sm text-gray-600 mb-4 font-semibold">Copy this token now. You won't be able to see it again.</p>
+              <div className="bg-gray-100 p-4 rounded-xl font-mono text-sm break-all border-2 border-gray-300">
+                {newToken.token}
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(newToken.token);
+                alert('Token copied to clipboard!');
+              }}
+              className="ml-4 px-4 py-2 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg transition-all"
+            >
+              Copy
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="mb-6 bg-white/70 backdrop-blur-xl rounded-2xl border-2 border-red-200 p-6 shadow-lg">
+          <p className="text-red-700 font-bold">{error}</p>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="text-center py-16">
+          <div className="relative mb-6 mx-auto w-16 h-16">
+            <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin [animation-direction:reverse] [animation-duration:0.8s]"></div>
+            </div>
+          </div>
+          <p className="text-gray-600 font-semibold">Loading tokens...</p>
+        </div>
+      ) : (
+        <div className="bg-white/70 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-xl overflow-hidden">
+          {tokens.length === 0 ? (
+            <div className="p-12 text-center">
+              <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-indigo-500 to-purple-500 rounded-3xl flex items-center justify-center shadow-2xl">
+                <span className="text-5xl">🔑</span>
+              </div>
+              <p className="text-gray-600 font-semibold text-lg">No API tokens found</p>
+              <p className="text-gray-500 text-sm mt-2">Create your first token to get started</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gradient-to-r from-indigo-50 to-purple-50">
+                  <tr>
+                    <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">Name</th>
+                    <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">Description</th>
+                    <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">Token</th>
+                    <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">Status</th>
+                    <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">Expires</th>
+                    <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">Last Used</th>
+                    <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tokens.map((token) => (
+                    <tr 
+                      key={token.id} 
+                      className="border-t border-gray-200 hover:bg-gradient-to-r hover:from-indigo-50/50 hover:to-purple-50/50 transition-colors"
+                    >
+                      <td className="px-4 lg:px-6 py-4 font-bold text-gray-800">{token.name}</td>
+                      <td className="px-4 lg:px-6 py-4 text-gray-600">{token.description || '-'}</td>
+                      <td className="px-4 lg:px-6 py-4">
+                        <code className="text-xs bg-gray-100 px-2 py-1 rounded font-mono">{token.token || 'N/A'}</code>
+                      </td>
+                      <td className="px-4 lg:px-6 py-4">
+                        <span className={`px-3 py-1 rounded-lg text-xs font-bold ${
+                          isExpired(token.expires_at)
+                            ? 'bg-gradient-to-r from-red-500 to-pink-500 text-white shadow-lg'
+                            : token.is_active
+                            ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg'
+                            : 'bg-gradient-to-r from-gray-400 to-gray-500 text-white shadow-lg'
+                        }`}>
+                          {isExpired(token.expires_at) ? 'Expired' : token.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="px-4 lg:px-6 py-4 text-sm text-gray-600 font-medium">
+                        {token.expires_at ? formatDate(token.expires_at) : 'Never'}
+                      </td>
+                      <td className="px-4 lg:px-6 py-4 text-sm text-gray-600 font-medium">
+                        {formatDate(token.last_used_at)}
+                      </td>
+                      <td className="px-4 lg:px-6 py-4">
+                        <button
+                          onClick={() => handleDelete(token.id)}
+                          className="text-red-600 hover:text-red-800 font-bold text-sm hover:underline transition-all"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Create Token Form Component
+ * Modal form for creating new API tokens
+ */
+function CreateTokenForm({ onClose, onSuccess }) {
+  const [formData, setFormData] = useState({
+    name: '',
+    description: '',
+    expiresInDays: '',
+    permissions: {}
+  });
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    if (!formData.name.trim()) {
+      setError('Token name is required');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/tokens`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.name,
+          description: formData.description || null,
+          expiresInDays: formData.expiresInDays ? parseInt(formData.expiresInDays) : null,
+          permissions: formData.permissions
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        onSuccess(data.token);
+      } else {
+        setError(data.error || 'Failed to create token');
+      }
+    } catch (err) {
+      console.error('Error creating token:', err);
+      setError('Failed to create token. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+      <div className="bg-white/90 backdrop-blur-xl rounded-3xl border border-gray-200/50 shadow-2xl p-6 lg:p-8 max-w-md w-full relative z-10">
+        <h3 className="text-2xl lg:text-3xl font-black bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">Create API Token</h3>
+        <p className="text-gray-600 font-semibold mb-6 text-sm">Generate a new API token for external integrations</p>
+        
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2">Token Name *</label>
+            <input
+              type="text"
+              value={formData.name}
+              onChange={(e) => setFormData({...formData, name: e.target.value})}
+              className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm"
+              required
+              placeholder="e.g., Production API"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2">Description</label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => setFormData({...formData, description: e.target.value})}
+              className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm"
+              rows="3"
+              placeholder="Optional description for this token"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2">Expires In (Days)</label>
+            <input
+              type="number"
+              value={formData.expiresInDays}
+              onChange={(e) => setFormData({...formData, expiresInDays: e.target.value})}
+              className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm"
+              min="1"
+              placeholder="Leave empty for no expiration"
+            />
+            <p className="text-xs text-gray-500 mt-2">Token will never expire if left empty</p>
+          </div>
+          
+          {error && (
+            <div className="p-4 bg-red-50 border-2 border-red-200 rounded-xl shadow-lg">
+              <p className="text-sm text-red-700 font-semibold flex items-center gap-2">
+                <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                {error}
+              </p>
+            </div>
+          )}
+          
+          <div className="flex gap-3 pt-2">
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] duration-200 flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Creating...</span>
+                </>
+              ) : (
+                <span>Create Token</span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-xl transition-all shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] duration-200"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -1229,18 +1549,23 @@ function ScraperEditForm({ scraper, onSave, onCancel, saving }) {
  */
 function CacheManagement() {
   const [cacheStats, setCacheStats] = useState(null);
+  const [cacheKeys, setCacheKeys] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [keysLoading, setKeysLoading] = useState(false);
   const [error, setError] = useState(null);
   const [clearing, setClearing] = useState(false);
-  const [clearPattern, setClearPattern] = useState('search:*');
+  const [clearPattern, setClearPattern] = useState('*');
+  const [filterPattern, setFilterPattern] = useState('*');
+  const [showAddKey, setShowAddKey] = useState(false);
+  const [viewingKey, setViewingKey] = useState(null);
 
   useEffect(() => {
     loadCacheStats();
+    loadCacheKeys();
   }, []);
 
   const loadCacheStats = async () => {
     try {
-      setLoading(true);
       setError(null);
       const response = await fetch(`${API_BASE}/cache/stats`, {
         credentials: 'include',
@@ -1260,6 +1585,73 @@ function CacheManagement() {
     }
   };
 
+  const loadCacheKeys = async (pattern = filterPattern) => {
+    try {
+      setKeysLoading(true);
+      setError(null);
+      const response = await fetch(`${API_BASE}/cache/keys?pattern=${encodeURIComponent(pattern)}`, {
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await response.json();
+      if (data.success) {
+        setCacheKeys(data.keys || []);
+        if (data.connected === false) {
+          setError('Cache not connected');
+        }
+      } else {
+        setError(data.error || 'Failed to load cache keys');
+      }
+    } catch (err) {
+      console.error('Failed to load cache keys:', err);
+      setError('Failed to load cache keys. Please try again.');
+    } finally {
+      setKeysLoading(false);
+    }
+  };
+
+  const handleViewKey = async (key) => {
+    try {
+      const response = await fetch(`${API_BASE}/cache/key/${encodeURIComponent(key)}`, {
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await response.json();
+      if (data.success) {
+        setViewingKey(data);
+      } else {
+        setError(data.error || 'Failed to load key value');
+      }
+    } catch (err) {
+      console.error('Failed to view key:', err);
+      setError('Failed to view key. Please try again.');
+    }
+  };
+
+  const handleDeleteKey = async (key) => {
+    if (!confirm(`Are you sure you want to delete key "${key}"?`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/cache/key/${encodeURIComponent(key)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await response.json();
+      if (data.success) {
+        await loadCacheKeys();
+        await loadCacheStats();
+      } else {
+        setError(data.error || 'Failed to delete key');
+      }
+    } catch (err) {
+      console.error('Failed to delete key:', err);
+      setError('Failed to delete key. Please try again.');
+    }
+  };
+
   const handleClearCache = async () => {
     if (!confirm(`Are you sure you want to clear cache entries matching "${clearPattern}"?`)) {
       return;
@@ -1276,6 +1668,7 @@ function CacheManagement() {
       });
       const data = await response.json();
       if (data.success) {
+        await loadCacheKeys();
         await loadCacheStats();
         alert(data.message || 'Cache cleared successfully');
       } else {
@@ -1287,6 +1680,20 @@ function CacheManagement() {
     } finally {
       setClearing(false);
     }
+  };
+
+  const formatTTL = (ttl) => {
+    if (ttl === null || ttl < 0) return 'Never';
+    if (ttl < 60) return `${ttl}s`;
+    if (ttl < 3600) return `${Math.floor(ttl / 60)}m`;
+    if (ttl < 86400) return `${Math.floor(ttl / 3600)}h`;
+    return `${Math.floor(ttl / 86400)}d`;
+  };
+
+  const formatSize = (bytes) => {
+    if (bytes < 1024) return `${bytes}B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
   };
 
   if (loading) {
@@ -1305,10 +1712,40 @@ function CacheManagement() {
 
   return (
     <div>
-      <div className="mb-8">
-        <h2 className="text-4xl lg:text-5xl font-black bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">Cache Management</h2>
-        <p className="text-gray-600 font-semibold">Manage Redis cache and view statistics</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        <div>
+          <h2 className="text-4xl lg:text-5xl font-black bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">Cache Management</h2>
+          <p className="text-gray-600 font-semibold">Manage Redis cache keys and view statistics</p>
+        </div>
+        <button
+          onClick={() => setShowAddKey(true)}
+          className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98] duration-200"
+        >
+          + Add Key
+        </button>
       </div>
+
+      {showAddKey && (
+        <AddCacheKeyForm
+          onClose={() => setShowAddKey(false)}
+          onSuccess={() => {
+            setShowAddKey(false);
+            loadCacheKeys();
+            loadCacheStats();
+          }}
+        />
+      )}
+
+      {viewingKey && (
+        <ViewCacheKeyModal
+          keyData={viewingKey}
+          onClose={() => setViewingKey(null)}
+          onDelete={async () => {
+            await handleDeleteKey(viewingKey.key);
+            setViewingKey(null);
+          }}
+        />
+      )}
 
       {error && (
         <div className="mb-6 bg-white/70 backdrop-blur-xl rounded-2xl border-2 border-red-200 p-6 shadow-lg">
@@ -1331,15 +1768,136 @@ function CacheManagement() {
         <div className="bg-white/70 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-xl p-6">
           <h3 className="text-xl font-black text-gray-800 mb-4">Cache Keys</h3>
           <p className="text-4xl font-black bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
-            {cacheStats?.keyCount || 0}
+            {cacheKeys.length}
           </p>
-          <p className="text-sm text-gray-600 mt-2">Total cached entries</p>
+          <p className="text-sm text-gray-600 mt-2">Keys displayed</p>
         </div>
       </div>
 
-      {/* Cache Control */}
+      {/* Filter and Refresh */}
+      <div className="bg-white/70 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-xl p-6 mb-8">
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex-1">
+            <label className="block text-sm font-bold text-gray-700 mb-2">Filter Pattern</label>
+            <input
+              type="text"
+              value={filterPattern}
+              onChange={(e) => setFilterPattern(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  loadCacheKeys(filterPattern);
+                }
+              }}
+              className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm"
+              placeholder="* or search:* or product:*"
+            />
+            <p className="text-xs text-gray-500 mt-2">Use wildcards like * to filter keys (e.g., search:*, product:*)</p>
+          </div>
+          <div className="flex items-end">
+            <button
+              onClick={() => loadCacheKeys(filterPattern)}
+              disabled={keysLoading || !cacheStats?.connected}
+              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] duration-200 flex items-center gap-2"
+            >
+              {keysLoading ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Loading...</span>
+                </>
+              ) : (
+                <>
+                  <span>🔄</span>
+                  <span>Refresh</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Cache Keys List */}
+      <div className="bg-white/70 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-xl overflow-hidden mb-8">
+        {keysLoading ? (
+          <div className="p-12 text-center">
+            <div className="relative mb-6 mx-auto w-16 h-16">
+              <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin [animation-direction:reverse] [animation-duration:0.8s]"></div>
+              </div>
+            </div>
+            <p className="text-gray-600 font-semibold">Loading cache keys...</p>
+          </div>
+        ) : cacheKeys.length === 0 ? (
+          <div className="p-12 text-center">
+            <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-gray-400 to-gray-500 rounded-3xl flex items-center justify-center shadow-2xl">
+              <span className="text-5xl">💾</span>
+            </div>
+            <p className="text-gray-600 font-semibold text-lg">No cache keys found</p>
+            <p className="text-gray-500 text-sm mt-2">Try a different pattern or create a new key</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gradient-to-r from-indigo-50 to-purple-50">
+                <tr>
+                  <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">Key</th>
+                  <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">Type</th>
+                  <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">Size</th>
+                  <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">TTL</th>
+                  <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">Preview</th>
+                  <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cacheKeys.map((keyInfo) => (
+                  <tr 
+                    key={keyInfo.key} 
+                    className="border-t border-gray-200 hover:bg-gradient-to-r hover:from-indigo-50/50 hover:to-purple-50/50 transition-colors"
+                  >
+                    <td className="px-4 lg:px-6 py-4">
+                      <code className="text-xs bg-gray-100 px-2 py-1 rounded font-mono break-all">{keyInfo.key}</code>
+                    </td>
+                    <td className="px-4 lg:px-6 py-4">
+                      <span className="px-2 py-1 rounded text-xs font-bold bg-gray-200 text-gray-700 capitalize">
+                        {keyInfo.valueType}
+                      </span>
+                    </td>
+                    <td className="px-4 lg:px-6 py-4 text-sm text-gray-600 font-medium">
+                      {formatSize(keyInfo.size)}
+                    </td>
+                    <td className="px-4 lg:px-6 py-4 text-sm text-gray-600 font-medium">
+                      {formatTTL(keyInfo.ttl)}
+                    </td>
+                    <td className="px-4 lg:px-6 py-4 text-xs text-gray-500 font-mono max-w-xs truncate">
+                      {keyInfo.valuePreview || '-'}
+                    </td>
+                    <td className="px-4 lg:px-6 py-4">
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleViewKey(keyInfo.key)}
+                          className="text-indigo-600 hover:text-indigo-800 font-bold text-sm hover:underline transition-all"
+                        >
+                          View
+                        </button>
+                        <button
+                          onClick={() => handleDeleteKey(keyInfo.key)}
+                          className="text-red-600 hover:text-red-800 font-bold text-sm hover:underline transition-all"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Clear Cache by Pattern */}
       <div className="bg-white/70 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-xl p-6">
-        <h3 className="text-2xl font-black text-gray-800 mb-4">Clear Cache</h3>
+        <h3 className="text-2xl font-black text-gray-800 mb-4">Clear Cache by Pattern</h3>
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-bold text-gray-700 mb-2">Pattern</label>
@@ -1368,6 +1926,253 @@ function CacheManagement() {
                 <span>Clear Cache</span>
               </>
             )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Add Cache Key Form Component
+ * Modal form for adding new cache keys
+ */
+function AddCacheKeyForm({ onClose, onSuccess }) {
+  const [formData, setFormData] = useState({
+    key: '',
+    value: '',
+    ttl: ''
+  });
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    if (!formData.key.trim()) {
+      setError('Key is required');
+      setLoading(false);
+      return;
+    }
+
+    if (!formData.value.trim()) {
+      setError('Value is required');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      // Try to parse as JSON, if it fails, use as string
+      let parsedValue = formData.value;
+      try {
+        parsedValue = JSON.parse(formData.value);
+      } catch (e) {
+        // Not JSON, use as string
+      }
+
+      const res = await fetch(`${API_BASE}/cache/key`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          key: formData.key,
+          value: parsedValue,
+          ttl: formData.ttl ? parseInt(formData.ttl) : null
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        onSuccess();
+      } else {
+        setError(data.error || 'Failed to create cache key');
+      }
+    } catch (err) {
+      console.error('Error creating cache key:', err);
+      setError('Failed to create cache key. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+      <div className="bg-white/90 backdrop-blur-xl rounded-3xl border border-gray-200/50 shadow-2xl p-6 lg:p-8 max-w-md w-full relative z-10">
+        <h3 className="text-2xl lg:text-3xl font-black bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">Add Cache Key</h3>
+        <p className="text-gray-600 font-semibold mb-6 text-sm">Create a new cache key-value pair</p>
+        
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2">Key *</label>
+            <input
+              type="text"
+              value={formData.key}
+              onChange={(e) => setFormData({...formData, key: e.target.value})}
+              className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm"
+              required
+              placeholder="e.g., my:cache:key"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2">Value *</label>
+            <textarea
+              value={formData.value}
+              onChange={(e) => setFormData({...formData, value: e.target.value})}
+              className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm"
+              rows="4"
+              required
+              placeholder='String value or JSON (e.g., "hello" or {"key": "value"})'
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2">TTL (seconds)</label>
+            <input
+              type="number"
+              value={formData.ttl}
+              onChange={(e) => setFormData({...formData, ttl: e.target.value})}
+              className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm"
+              min="1"
+              placeholder="Leave empty for no expiration"
+            />
+            <p className="text-xs text-gray-500 mt-2">Time to live in seconds (optional)</p>
+          </div>
+          
+          {error && (
+            <div className="p-4 bg-red-50 border-2 border-red-200 rounded-xl shadow-lg">
+              <p className="text-sm text-red-700 font-semibold flex items-center gap-2">
+                <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                {error}
+              </p>
+            </div>
+          )}
+          
+          <div className="flex gap-3 pt-2">
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] duration-200 flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Creating...</span>
+                </>
+              ) : (
+                <span>Create Key</span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-xl transition-all shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] duration-200"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * View Cache Key Modal Component
+ * Displays full cache key value
+ */
+function ViewCacheKeyModal({ keyData, onClose, onDelete }) {
+  const [copied, setCopied] = useState(false);
+
+  const copyValue = () => {
+    const valueStr = typeof keyData.value === 'string' 
+      ? keyData.value 
+      : JSON.stringify(keyData.value, null, 2);
+    navigator.clipboard.writeText(valueStr);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const formatTTL = (ttl) => {
+    if (ttl === null || ttl < 0) return 'Never';
+    if (ttl < 60) return `${ttl}s`;
+    if (ttl < 3600) return `${Math.floor(ttl / 60)}m`;
+    if (ttl < 86400) return `${Math.floor(ttl / 3600)}h`;
+    return `${Math.floor(ttl / 86400)}d`;
+  };
+
+  const formatSize = (bytes) => {
+    if (bytes < 1024) return `${bytes}B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm overflow-y-auto">
+      <div className="bg-white/90 backdrop-blur-xl rounded-3xl border border-gray-200/50 shadow-2xl p-6 lg:p-8 max-w-4xl w-full relative z-10 my-8">
+        <div className="flex items-start justify-between mb-6">
+          <div>
+            <h3 className="text-2xl lg:text-3xl font-black bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">Cache Key Details</h3>
+            <code className="text-sm bg-gray-100 px-3 py-1 rounded font-mono break-all">{keyData.key}</code>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="bg-indigo-50 rounded-xl p-4">
+            <p className="text-xs text-gray-600 font-semibold mb-1">Type</p>
+            <p className="text-lg font-black text-indigo-700 capitalize">{keyData.valueType}</p>
+          </div>
+          <div className="bg-purple-50 rounded-xl p-4">
+            <p className="text-xs text-gray-600 font-semibold mb-1">Size</p>
+            <p className="text-lg font-black text-purple-700">{formatSize(keyData.size)}</p>
+          </div>
+          <div className="bg-pink-50 rounded-xl p-4">
+            <p className="text-xs text-gray-600 font-semibold mb-1">TTL</p>
+            <p className="text-lg font-black text-pink-700">{formatTTL(keyData.ttl)}</p>
+          </div>
+        </div>
+
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-bold text-gray-700">Value</label>
+            <button
+              onClick={copyValue}
+              className="text-xs text-indigo-600 hover:text-indigo-800 font-bold hover:underline"
+            >
+              {copied ? '✓ Copied!' : 'Copy'}
+            </button>
+          </div>
+          <div className="bg-gray-900 text-green-400 p-4 rounded-xl font-mono text-sm overflow-x-auto max-h-96 overflow-y-auto">
+            <pre className="whitespace-pre-wrap break-words">
+              {typeof keyData.value === 'string' 
+                ? keyData.value 
+                : JSON.stringify(keyData.value, null, 2)}
+            </pre>
+          </div>
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={onDelete}
+            className="flex-1 py-3 bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] duration-200"
+          >
+            Delete Key
+          </button>
+          <button
+            onClick={onClose}
+            className="flex-1 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-xl transition-all shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] duration-200"
+          >
+            Close
           </button>
         </div>
       </div>
