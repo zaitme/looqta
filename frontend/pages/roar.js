@@ -2821,6 +2821,7 @@ function AuditLog() {
 
   useEffect(() => {
     loadAuditLogs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [limit]);
 
   const loadAuditLogs = async () => {

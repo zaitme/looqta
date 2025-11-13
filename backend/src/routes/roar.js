@@ -1539,13 +1539,20 @@ router.put('/cache/key/:key', requireAuth, requireRole('super_admin', 'admin'), 
           // Key has TTL, set value and restore TTL
           await cache.set(key, serializedValue);
           await cache.expire(key, currentTtl);
+        } else if (currentTtl === -1) {
+          // Key exists but has no expiration (-1 means no TTL), just set value
+          await cache.set(key, serializedValue);
         } else {
-          // No TTL, just set value
+          // Key doesn't exist or error, just set value
           await cache.set(key, serializedValue);
         }
       }
     } else if (ttl && ttl > 0) {
       // Only update TTL, preserve value
+      const exists = await cache.exists(key);
+      if (!exists) {
+        return res.status(404).json({ success: false, error: 'Key not found' });
+      }
       await cache.expire(key, ttl);
     } else {
       return res.status(400).json({ success: false, error: 'Either value or ttl must be provided' });
@@ -1682,8 +1689,11 @@ router.get('/stats', requireAuth, async (req, res) => {
  */
 router.get('/audit-log', requireAuth, requireRole('super_admin', 'admin'), async (req, res) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit) || 100, 1000); // Max 1000
-    const offset = Math.max(parseInt(req.query.offset) || 0, 0); // Min 0
+    // Ensure limit and offset are valid integers
+    const limitParam = parseInt(req.query.limit, 10);
+    const offsetParam = parseInt(req.query.offset, 10);
+    const limit = Math.min(isNaN(limitParam) ? 100 : limitParam, 1000); // Max 1000
+    const offset = Math.max(isNaN(offsetParam) ? 0 : offsetParam, 0); // Min 0
     
     // Check database connection
     try {
