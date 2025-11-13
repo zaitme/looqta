@@ -780,9 +780,20 @@ router.get('/ads', requireAuth, auditLog('LIST_ADS', 'ad_placement'), async (req
     const sanitizedAds = ads.map(ad => {
       let targetAudience = null;
       try {
-        targetAudience = ad.target_audience ? JSON.parse(ad.target_audience) : null;
+        // MySQL JSON columns are returned as objects, not strings
+        if (ad.target_audience) {
+          if (typeof ad.target_audience === 'string') {
+            targetAudience = JSON.parse(ad.target_audience);
+          } else if (typeof ad.target_audience === 'object') {
+            targetAudience = ad.target_audience;
+          } else {
+            targetAudience = {};
+          }
+        } else {
+          targetAudience = {};
+        }
       } catch (e) {
-        logger.warn('Failed to parse ad target_audience', { adId: ad.id });
+        logger.warn('Failed to parse ad target_audience', { adId: ad.id, error: e.message });
         targetAudience = {};
       }
       return {
