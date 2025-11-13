@@ -262,6 +262,23 @@ module.exports = {
       throw e;
     }
   },
+  exists: async (key) => {
+    try {
+      const result = await redis.exists(key);
+      return result === 1;
+    } catch(e) {
+      logger.error('Redis exists failed', { key, error: e.message });
+      return false;
+    }
+  },
+  expire: async (key, seconds) => {
+    try {
+      return await redis.expire(key, seconds);
+    } catch(e) {
+      logger.error('Redis expire failed', { key, seconds, error: e.message });
+      throw e;
+    }
+  },
   client: redis,
   isStale,
   getTtlForTier,

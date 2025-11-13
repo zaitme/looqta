@@ -1108,17 +1108,464 @@ function CreateTokenForm({ onClose, onSuccess }) {
  * @component
  */
 function AdManagement() {
+  const [ads, setAds] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [editingAd, setEditingAd] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    loadAds();
+  }, []);
+
+  const loadAds = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch(`${API_BASE}/ads`, {
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await response.json();
+      if (data.success) {
+        setAds(data.ads || []);
+      } else {
+        setError(data.error || 'Failed to load ads');
+      }
+    } catch (err) {
+      console.error('Failed to load ads:', err);
+      setError('Failed to load ads. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (adId) => {
+    if (!confirm('Are you sure you want to delete this ad placement? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE}/ads/${adId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (data.success) {
+        await loadAds();
+      } else {
+        setError(data.error || 'Failed to delete ad');
+      }
+    } catch (error) {
+      console.error('Failed to delete ad:', error);
+      setError('Failed to delete ad. Please try again.');
+    }
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString();
+  };
+
+  const isActive = (ad) => {
+    if (!ad.is_active) return false;
+    const now = new Date();
+    if (ad.start_date && new Date(ad.start_date) > now) return false;
+    if (ad.end_date && new Date(ad.end_date) < now) return false;
+    return true;
+  };
+
   return (
     <div>
-      <div className="mb-8">
-        <h2 className="text-4xl lg:text-5xl font-black bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">Ad Placement Management</h2>
-        <p className="text-gray-600 font-semibold">Manage ad placements and campaigns</p>
-      </div>
-      <div className="bg-white/70 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-xl p-12 text-center">
-        <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-pink-500 to-rose-500 rounded-3xl flex items-center justify-center shadow-2xl">
-          <span className="text-5xl">📢</span>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+        <div>
+          <h2 className="text-4xl lg:text-5xl font-black bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">Ad Placement Management</h2>
+          <p className="text-gray-600 font-semibold">Manage ad placements and campaigns</p>
         </div>
-        <p className="text-gray-600 font-semibold text-lg">Ad management interface coming soon...</p>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98] duration-200"
+        >
+          + Create Ad
+        </button>
+      </div>
+
+      {showCreate && (
+        <AdForm
+          onClose={() => setShowCreate(false)}
+          onSuccess={() => {
+            setShowCreate(false);
+            loadAds();
+          }}
+        />
+      )}
+
+      {editingAd && (
+        <AdForm
+          ad={editingAd}
+          onClose={() => setEditingAd(null)}
+          onSuccess={() => {
+            setEditingAd(null);
+            loadAds();
+          }}
+        />
+      )}
+
+      {error && (
+        <div className="mb-6 bg-white/70 backdrop-blur-xl rounded-2xl border-2 border-red-200 p-6 shadow-lg">
+          <p className="text-red-700 font-bold">{error}</p>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="text-center py-16">
+          <div className="relative mb-6 mx-auto w-16 h-16">
+            <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin [animation-direction:reverse] [animation-duration:0.8s]"></div>
+            </div>
+          </div>
+          <p className="text-gray-600 font-semibold">Loading ads...</p>
+        </div>
+      ) : (
+        <div className="bg-white/70 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-xl overflow-hidden">
+          {ads.length === 0 ? (
+            <div className="p-12 text-center">
+              <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-pink-500 to-rose-500 rounded-3xl flex items-center justify-center shadow-2xl">
+                <span className="text-5xl">📢</span>
+              </div>
+              <p className="text-gray-600 font-semibold text-lg">No ad placements found</p>
+              <p className="text-gray-500 text-sm mt-2">Create your first ad placement to get started</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gradient-to-r from-indigo-50 to-purple-50">
+                  <tr>
+                    <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">Name</th>
+                    <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">Position</th>
+                    <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">Type</th>
+                    <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">Status</th>
+                    <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">Priority</th>
+                    <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">Start Date</th>
+                    <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">End Date</th>
+                    <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ads.map((ad) => (
+                    <tr 
+                      key={ad.id} 
+                      className="border-t border-gray-200 hover:bg-gradient-to-r hover:from-indigo-50/50 hover:to-purple-50/50 transition-colors"
+                    >
+                      <td className="px-4 lg:px-6 py-4 font-bold text-gray-800">{ad.name}</td>
+                      <td className="px-4 lg:px-6 py-4 text-gray-600">{ad.position}</td>
+                      <td className="px-4 lg:px-6 py-4">
+                        <span className="px-2 py-1 rounded text-xs font-bold bg-gray-200 text-gray-700 capitalize">
+                          {ad.ad_type || 'banner'}
+                        </span>
+                      </td>
+                      <td className="px-4 lg:px-6 py-4">
+                        <span className={`px-3 py-1 rounded-lg text-xs font-bold ${
+                          isActive(ad)
+                            ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-lg'
+                            : 'bg-gradient-to-r from-gray-400 to-gray-500 text-white shadow-lg'
+                        }`}>
+                          {isActive(ad) ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="px-4 lg:px-6 py-4 text-sm text-gray-600 font-medium">
+                        {ad.priority || 0}
+                      </td>
+                      <td className="px-4 lg:px-6 py-4 text-sm text-gray-600 font-medium">
+                        {formatDate(ad.start_date)}
+                      </td>
+                      <td className="px-4 lg:px-6 py-4 text-sm text-gray-600 font-medium">
+                        {formatDate(ad.end_date)}
+                      </td>
+                      <td className="px-4 lg:px-6 py-4">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setEditingAd(ad)}
+                            className="text-indigo-600 hover:text-indigo-800 font-bold text-sm hover:underline transition-all"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDelete(ad.id)}
+                            className="text-red-600 hover:text-red-800 font-bold text-sm hover:underline transition-all"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Ad Form Component
+ * Modal form for creating/editing ad placements
+ */
+function AdForm({ ad, onClose, onSuccess }) {
+  const [formData, setFormData] = useState({
+    name: ad?.name || '',
+    position: ad?.position || '',
+    ad_type: ad?.ad_type || 'banner',
+    content: ad?.content || '',
+    image_url: ad?.image_url || '',
+    link_url: ad?.link_url || '',
+    target_audience: ad?.target_audience ? JSON.stringify(ad.target_audience, null, 2) : '{}',
+    start_date: ad?.start_date ? ad.start_date.split('T')[0] : '',
+    end_date: ad?.end_date ? ad.end_date.split('T')[0] : '',
+    priority: ad?.priority || 0,
+    is_active: ad?.is_active !== undefined ? ad.is_active : true
+  });
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    if (!formData.name || !formData.position) {
+      setError('Name and position are required');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      let targetAudience = {};
+      try {
+        targetAudience = JSON.parse(formData.target_audience);
+      } catch (e) {
+        setError('Invalid JSON in target audience field');
+        setLoading(false);
+        return;
+      }
+
+      const url = ad ? `${API_BASE}/ads/${ad.id}` : `${API_BASE}/ads`;
+      const method = ad ? 'PUT' : 'POST';
+
+      const res = await fetch(url, {
+        method,
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.name,
+          position: formData.position,
+          ad_type: formData.ad_type,
+          content: formData.content || null,
+          image_url: formData.image_url || null,
+          link_url: formData.link_url || null,
+          target_audience: targetAudience,
+          start_date: formData.start_date || null,
+          end_date: formData.end_date || null,
+          priority: parseInt(formData.priority) || 0,
+          is_active: formData.is_active
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        onSuccess();
+      } else {
+        setError(data.error || `Failed to ${ad ? 'update' : 'create'} ad`);
+      }
+    } catch (err) {
+      console.error(`Error ${ad ? 'updating' : 'creating'} ad:`, err);
+      setError(`Failed to ${ad ? 'update' : 'create'} ad. Please try again.`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm overflow-y-auto">
+      <div className="bg-white/90 backdrop-blur-xl rounded-3xl border border-gray-200/50 shadow-2xl p-6 lg:p-8 max-w-3xl w-full relative z-10 my-8">
+        <h3 className="text-2xl lg:text-3xl font-black bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
+          {ad ? 'Edit Ad Placement' : 'Create Ad Placement'}
+        </h3>
+        <p className="text-gray-600 font-semibold mb-6 text-sm">
+          {ad ? 'Update ad placement details' : 'Add a new ad placement to the system'}
+        </p>
+        
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">Name *</label>
+              <input
+                type="text"
+                value={formData.name}
+                onChange={(e) => setFormData({...formData, name: e.target.value})}
+                className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm"
+                required
+                placeholder="Ad name"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">Position *</label>
+              <input
+                type="text"
+                value={formData.position}
+                onChange={(e) => setFormData({...formData, position: e.target.value})}
+                className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm"
+                required
+                placeholder="e.g., header, sidebar, footer"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">Ad Type</label>
+              <select
+                value={formData.ad_type}
+                onChange={(e) => setFormData({...formData, ad_type: e.target.value})}
+                className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm"
+              >
+                <option value="banner">Banner</option>
+                <option value="sidebar">Sidebar</option>
+                <option value="popup">Popup</option>
+                <option value="inline">Inline</option>
+              </select>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">Priority</label>
+              <input
+                type="number"
+                value={formData.priority}
+                onChange={(e) => setFormData({...formData, priority: e.target.value})}
+                className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm"
+                min="0"
+                placeholder="0"
+              />
+            </div>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2">Image URL</label>
+            <input
+              type="url"
+              value={formData.image_url}
+              onChange={(e) => setFormData({...formData, image_url: e.target.value})}
+              className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm"
+              placeholder="https://example.com/image.jpg"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2">Link URL</label>
+            <input
+              type="url"
+              value={formData.link_url}
+              onChange={(e) => setFormData({...formData, link_url: e.target.value})}
+              className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm"
+              placeholder="https://example.com"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2">Content</label>
+            <textarea
+              value={formData.content}
+              onChange={(e) => setFormData({...formData, content: e.target.value})}
+              className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm"
+              rows="3"
+              placeholder="Ad content or description"
+            />
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">Start Date</label>
+              <input
+                type="date"
+                value={formData.start_date}
+                onChange={(e) => setFormData({...formData, start_date: e.target.value})}
+                className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-bold text-gray-700 mb-2">End Date</label>
+              <input
+                type="date"
+                value={formData.end_date}
+                onChange={(e) => setFormData({...formData, end_date: e.target.value})}
+                className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm"
+              />
+            </div>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2">Target Audience (JSON)</label>
+            <textarea
+              value={formData.target_audience}
+              onChange={(e) => setFormData({...formData, target_audience: e.target.value})}
+              className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm font-mono text-sm"
+              rows="4"
+              placeholder='{"location": "KSA", "age": "18-65"}'
+            />
+          </div>
+          
+          <div>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={formData.is_active}
+                onChange={(e) => setFormData({...formData, is_active: e.target.checked})}
+                className="w-5 h-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span className="text-sm font-bold text-gray-700">Active</span>
+            </label>
+          </div>
+          
+          {error && (
+            <div className="p-4 bg-red-50 border-2 border-red-200 rounded-xl shadow-lg">
+              <p className="text-sm text-red-700 font-semibold flex items-center gap-2">
+                <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                {error}
+              </p>
+            </div>
+          )}
+          
+          <div className="flex gap-3 pt-2">
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] duration-200 flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>{ad ? 'Updating...' : 'Creating...'}</span>
+                </>
+              ) : (
+                <span>{ad ? 'Update Ad' : 'Create Ad'}</span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-xl transition-all shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] duration-200"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
@@ -1558,6 +2005,7 @@ function CacheManagement() {
   const [filterPattern, setFilterPattern] = useState('*');
   const [showAddKey, setShowAddKey] = useState(false);
   const [viewingKey, setViewingKey] = useState(null);
+  const [editingKey, setEditingKey] = useState(null);
 
   useEffect(() => {
     loadCacheStats();
@@ -1736,13 +2184,30 @@ function CacheManagement() {
         />
       )}
 
-      {viewingKey && (
+      {viewingKey && !editingKey && (
         <ViewCacheKeyModal
           keyData={viewingKey}
           onClose={() => setViewingKey(null)}
+          onEdit={() => setEditingKey(viewingKey)}
           onDelete={async () => {
             await handleDeleteKey(viewingKey.key);
             setViewingKey(null);
+          }}
+        />
+      )}
+
+      {editingKey && (
+        <EditCacheKeyForm
+          keyData={editingKey}
+          onClose={() => {
+            setEditingKey(null);
+            setViewingKey(null);
+          }}
+          onSuccess={async () => {
+            setEditingKey(null);
+            setViewingKey(null);
+            await loadCacheKeys();
+            await loadCacheStats();
           }}
         />
       )}
@@ -1878,6 +2343,23 @@ function CacheManagement() {
                           className="text-indigo-600 hover:text-indigo-800 font-bold text-sm hover:underline transition-all"
                         >
                           View
+                        </button>
+                        <button
+                          onClick={async () => {
+                            const response = await fetch(`${API_BASE}/cache/key/${encodeURIComponent(keyInfo.key)}`, {
+                              credentials: 'include',
+                              headers: { 'Content-Type': 'application/json' }
+                            });
+                            const data = await response.json();
+                            if (data.success) {
+                              setEditingKey(data);
+                            } else {
+                              setError(data.error || 'Failed to load key for editing');
+                            }
+                          }}
+                          className="text-blue-600 hover:text-blue-800 font-bold text-sm hover:underline transition-all"
+                        >
+                          Edit
                         </button>
                         <button
                           onClick={() => handleDeleteKey(keyInfo.key)}
@@ -2085,7 +2567,7 @@ function AddCacheKeyForm({ onClose, onSuccess }) {
  * View Cache Key Modal Component
  * Displays full cache key value
  */
-function ViewCacheKeyModal({ keyData, onClose, onDelete }) {
+function ViewCacheKeyModal({ keyData, onClose, onEdit, onDelete }) {
   const [copied, setCopied] = useState(false);
 
   const copyValue = () => {
@@ -2163,6 +2645,12 @@ function ViewCacheKeyModal({ keyData, onClose, onDelete }) {
 
         <div className="flex gap-3">
           <button
+            onClick={onEdit}
+            className="flex-1 py-3 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] duration-200"
+          >
+            Edit Key
+          </button>
+          <button
             onClick={onDelete}
             className="flex-1 py-3 bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] duration-200"
           >
@@ -2181,6 +2669,141 @@ function ViewCacheKeyModal({ keyData, onClose, onDelete }) {
 }
 
 /**
+ * Edit Cache Key Form Component
+ * Modal form for editing existing cache keys
+ */
+function EditCacheKeyForm({ keyData, onClose, onSuccess }) {
+  const [formData, setFormData] = useState({
+    value: typeof keyData.value === 'string' 
+      ? keyData.value 
+      : JSON.stringify(keyData.value, null, 2),
+    ttl: keyData.ttl ? String(keyData.ttl) : ''
+  });
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
+
+    try {
+      // Try to parse as JSON, if it fails, use as string
+      let parsedValue = formData.value;
+      try {
+        parsedValue = JSON.parse(formData.value);
+      } catch (e) {
+        // Not JSON, use as string
+      }
+
+      const res = await fetch(`${API_BASE}/cache/key/${encodeURIComponent(keyData.key)}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          value: parsedValue,
+          ttl: formData.ttl ? parseInt(formData.ttl) : null
+        })
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        onSuccess();
+      } else {
+        setError(data.error || 'Failed to update cache key');
+      }
+    } catch (err) {
+      console.error('Error updating cache key:', err);
+      setError('Failed to update cache key. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm overflow-y-auto">
+      <div className="bg-white/90 backdrop-blur-xl rounded-3xl border border-gray-200/50 shadow-2xl p-6 lg:p-8 max-w-4xl w-full relative z-10 my-8">
+        <div className="flex items-start justify-between mb-6">
+          <div>
+            <h3 className="text-2xl lg:text-3xl font-black bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">Edit Cache Key</h3>
+            <code className="text-sm bg-gray-100 px-3 py-1 rounded font-mono break-all">{keyData.key}</code>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
+          >
+            ×
+          </button>
+        </div>
+        
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2">Value *</label>
+            <textarea
+              value={formData.value}
+              onChange={(e) => setFormData({...formData, value: e.target.value})}
+              className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm font-mono text-sm"
+              rows="12"
+              required
+              placeholder='String value or JSON (e.g., "hello" or {"key": "value"})'
+            />
+            <p className="text-xs text-gray-500 mt-2">Edit the cache value. JSON will be parsed automatically.</p>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2">TTL (seconds)</label>
+            <input
+              type="number"
+              value={formData.ttl}
+              onChange={(e) => setFormData({...formData, ttl: e.target.value})}
+              className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm"
+              min="1"
+              placeholder="Leave empty to preserve existing TTL"
+            />
+            <p className="text-xs text-gray-500 mt-2">Time to live in seconds. Leave empty to keep current TTL.</p>
+          </div>
+          
+          {error && (
+            <div className="p-4 bg-red-50 border-2 border-red-200 rounded-xl shadow-lg">
+              <p className="text-sm text-red-700 font-semibold flex items-center gap-2">
+                <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                </svg>
+                {error}
+              </p>
+            </div>
+          )}
+          
+          <div className="flex gap-3 pt-2">
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] duration-200 flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Updating...</span>
+                </>
+              ) : (
+                <span>Update Key</span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-xl transition-all shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] duration-200"
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Audit Log Component
  * Displays system audit logs and activity history
  * 
@@ -2190,11 +2813,15 @@ function AuditLog() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [limit] = useState(100);
+  const [limit, setLimit] = useState(100);
+  const [filterAction, setFilterAction] = useState('');
+  const [filterResource, setFilterResource] = useState('');
+  const [filterUser, setFilterUser] = useState('');
+  const [viewingLog, setViewingLog] = useState(null);
 
   useEffect(() => {
     loadAuditLogs();
-  }, []);
+  }, [limit]);
 
   const loadAuditLogs = async () => {
     try {
@@ -2217,6 +2844,17 @@ function AuditLog() {
       setLoading(false);
     }
   };
+
+  const filteredLogs = logs.filter(log => {
+    if (filterAction && !log.action.toLowerCase().includes(filterAction.toLowerCase())) return false;
+    if (filterResource && !log.resource_type?.toLowerCase().includes(filterResource.toLowerCase())) return false;
+    if (filterUser && !log.username?.toLowerCase().includes(filterUser.toLowerCase())) return false;
+    return true;
+  });
+
+  const uniqueActions = [...new Set(logs.map(log => log.action))].sort();
+  const uniqueResources = [...new Set(logs.map(log => log.resource_type).filter(Boolean))].sort();
+  const uniqueUsers = [...new Set(logs.map(log => log.username).filter(Boolean))].sort();
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -2257,10 +2895,163 @@ function AuditLog() {
         </div>
       )}
 
+      {/* Filters */}
+      <div className="bg-white/70 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-xl p-6 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2">Filter by Action</label>
+            <select
+              value={filterAction}
+              onChange={(e) => setFilterAction(e.target.value)}
+              className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm"
+            >
+              <option value="">All Actions</option>
+              {uniqueActions.map(action => (
+                <option key={action} value={action}>{action}</option>
+              ))}
+            </select>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2">Filter by Resource</label>
+            <select
+              value={filterResource}
+              onChange={(e) => setFilterResource(e.target.value)}
+              className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm"
+            >
+              <option value="">All Resources</option>
+              {uniqueResources.map(resource => (
+                <option key={resource} value={resource}>{resource}</option>
+              ))}
+            </select>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2">Filter by User</label>
+            <select
+              value={filterUser}
+              onChange={(e) => setFilterUser(e.target.value)}
+              className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm"
+            >
+              <option value="">All Users</option>
+              {uniqueUsers.map(user => (
+                <option key={user} value={user}>{user}</option>
+              ))}
+            </select>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-bold text-gray-700 mb-2">Limit</label>
+            <select
+              value={limit}
+              onChange={(e) => setLimit(parseInt(e.target.value))}
+              className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm"
+            >
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={250}>250</option>
+              <option value={500}>500</option>
+              <option value={1000}>1000</option>
+            </select>
+          </div>
+        </div>
+        
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-gray-600 font-semibold">
+            Showing {filteredLogs.length} of {logs.length} logs
+          </p>
+          <button
+            onClick={loadAuditLogs}
+            className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] duration-200 flex items-center gap-2"
+          >
+            <span>🔄</span>
+            <span>Refresh</span>
+          </button>
+        </div>
+      </div>
+
+      {viewingLog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white/90 backdrop-blur-xl rounded-3xl border border-gray-200/50 shadow-2xl p-6 lg:p-8 max-w-3xl w-full relative z-10 my-8">
+            <div className="flex items-start justify-between mb-6">
+              <div>
+                <h3 className="text-2xl lg:text-3xl font-black bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">Audit Log Details</h3>
+                <span className={`px-3 py-1 rounded-lg text-xs font-bold bg-gradient-to-r ${getActionColor(viewingLog.action)} text-white shadow-lg`}>
+                  {viewingLog.action}
+                </span>
+              </div>
+              <button
+                onClick={() => setViewingLog(null)}
+                className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <p className="text-xs text-gray-600 font-semibold mb-1">Timestamp</p>
+                <p className="text-lg font-black text-gray-800">{formatDate(viewingLog.created_at)}</p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs text-gray-600 font-semibold mb-1">User</p>
+                  <p className="text-lg font-black text-gray-800">{viewingLog.username || 'System'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-600 font-semibold mb-1">IP Address</p>
+                  <p className="text-lg font-black text-gray-800 font-mono">{viewingLog.ip_address || 'N/A'}</p>
+                </div>
+              </div>
+              
+              <div>
+                <p className="text-xs text-gray-600 font-semibold mb-1">Resource</p>
+                <p className="text-lg font-black text-gray-800">
+                  {viewingLog.resource_type || 'N/A'}
+                  {viewingLog.resource_id && ` #${viewingLog.resource_id}`}
+                </p>
+              </div>
+              
+              {viewingLog.details && Object.keys(viewingLog.details).length > 0 && (
+                <div>
+                  <p className="text-xs text-gray-600 font-semibold mb-1">Details</p>
+                  <div className="bg-gray-900 text-green-400 p-4 rounded-xl font-mono text-sm overflow-x-auto">
+                    <pre className="whitespace-pre-wrap break-words">
+                      {JSON.stringify(viewingLog.details, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <button
+              onClick={() => setViewingLog(null)}
+              className="w-full mt-6 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold rounded-xl transition-all shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] duration-200"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white/70 backdrop-blur-xl rounded-2xl border border-gray-200/50 shadow-xl overflow-hidden">
-        {logs.length === 0 ? (
+        {loading ? (
+          <div className="p-12 text-center">
+            <div className="relative mb-6 mx-auto w-16 h-16">
+              <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin [animation-direction:reverse] [animation-duration:0.8s]"></div>
+              </div>
+            </div>
+            <p className="text-gray-600 font-semibold">Loading audit logs...</p>
+          </div>
+        ) : filteredLogs.length === 0 ? (
           <div className="p-12 text-center">
             <p className="text-gray-600 font-semibold text-lg">No audit logs found</p>
+            {(filterAction || filterResource || filterUser) && (
+              <p className="text-gray-500 text-sm mt-2">Try adjusting your filters</p>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -2272,10 +3063,11 @@ function AuditLog() {
                   <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">Action</th>
                   <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">Resource</th>
                   <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">IP Address</th>
+                  <th className="px-4 lg:px-6 py-4 text-left font-bold text-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {logs.map((log, index) => (
+                {filteredLogs.map((log) => (
                   <tr
                     key={log.id}
                     className="border-t border-gray-200 hover:bg-gradient-to-r hover:from-indigo-50/50 hover:to-purple-50/50 transition-colors"
@@ -2297,6 +3089,14 @@ function AuditLog() {
                     </td>
                     <td className="px-4 lg:px-6 py-4 text-sm text-gray-600 font-mono">
                       {log.ip_address || '-'}
+                    </td>
+                    <td className="px-4 lg:px-6 py-4">
+                      <button
+                        onClick={() => setViewingLog(log)}
+                        className="text-indigo-600 hover:text-indigo-800 font-bold text-sm hover:underline transition-all"
+                      >
+                        View Details
+                      </button>
                     </td>
                   </tr>
                 ))}

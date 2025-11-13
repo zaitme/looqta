@@ -1499,6 +1499,66 @@ router.post('/cache/key', requireAuth, requireRole('super_admin', 'admin'), audi
 });
 
 /**
+ * PUT /roar/cache/key/:key
+ * Update a cache key value and/or TTL
+ */
+router.put('/cache/key/:key', requireAuth, requireRole('super_admin', 'admin'), auditLog('UPDATE_CACHE_KEY', 'cache'), async (req, res) => {
+  try {
+    const key = decodeURIComponent(req.params.key);
+    const { value, ttl } = req.body;
+    
+    let connected = false;
+    try {
+      await cache.ping();
+      connected = true;
+    } catch (e) {
+      connected = false;
+    }
+    
+    if (!connected) {
+      return res.status(503).json({ success: false, error: 'Cache not connected' });
+    }
+    
+    // Check if key exists
+    const exists = await cache.exists(key);
+    if (!exists) {
+      return res.status(404).json({ success: false, error: 'Key not found' });
+    }
+    
+    // If value is provided, update it
+    if (value !== undefined && value !== null) {
+      const serializedValue = typeof value === 'string' ? value : JSON.stringify(value);
+      
+      if (ttl && ttl > 0) {
+        // Update value and TTL
+        await cache.setex(key, ttl, serializedValue);
+      } else {
+        // Update value, preserve existing TTL by getting current TTL first
+        const currentTtl = await cache.ttl(key);
+        if (currentTtl > 0) {
+          // Key has TTL, set value and restore TTL
+          await cache.set(key, serializedValue);
+          await cache.expire(key, currentTtl);
+        } else {
+          // No TTL, just set value
+          await cache.set(key, serializedValue);
+        }
+      }
+    } else if (ttl && ttl > 0) {
+      // Only update TTL, preserve value
+      await cache.expire(key, ttl);
+    } else {
+      return res.status(400).json({ success: false, error: 'Either value or ttl must be provided' });
+    }
+    
+    res.json({ success: true, message: 'Cache key updated successfully', key });
+  } catch (error) {
+    logger.error('Failed to update cache key', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * DELETE /roar/cache/key/:key
  * Delete a specific cache key
  */
