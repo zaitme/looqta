@@ -30,6 +30,7 @@ const productsRouter = require('./routes/products');
 const usersRouter = require('./routes/users');
 const affiliateRouter = require('./routes/affiliate');
 const adminScraperStatusRouter = require('./routes/admin-scraper-status');
+const adsRouter = require('./routes/ads');
 
 // Worker and scheduler imports
 const schedule = require('./cron/scheduler');
@@ -187,6 +188,9 @@ app.use('/api/products-swr', productsSwrRouter);
 
 // User routes (public API)
 app.use('/api/users', usersRouter);
+
+// Public ads routes (for frontend display)
+app.use('/api/ads', adsRouter);
 
 // Affiliate routes
 app.use('/api/affiliate', affiliateRouter);

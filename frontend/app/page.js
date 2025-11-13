@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from 'react';
 import SearchBox from '../components/SearchBox';
 import ResultCard from '../components/ResultCard';
 import Spinner from '../components/Spinner';
+import AdDisplay from '../components/AdDisplay';
 
 export default function Page(){
   const [results, setResults] = useState(null);
@@ -103,8 +104,13 @@ export default function Page(){
       </div>
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12 z-10">
+        {/* Header Ad */}
+        <div className="animate-fadeInUp -mt-8 sm:-mt-12 mb-4">
+          <AdDisplay position="header" />
+        </div>
+
         {/* Search Box */}
-        <div className="animate-fadeInUp -mt-8 sm:-mt-12 mb-8 sm:mb-10">
+        <div className="animate-fadeInUp mb-8 sm:mb-10">
           <div className="glass-effect rounded-2xl sm:rounded-3xl shadow-2xl p-4 sm:p-6 lg:p-8 border border-white/30 glow-effect">
             <SearchBox 
               ref={searchBoxRef}
@@ -482,6 +488,11 @@ export default function Page(){
             </div>
           </>
         )}
+        
+        {/* Footer Ad */}
+        <div className="mt-12">
+          <AdDisplay position="footer" />
+        </div>
       </div>
     </main>
   );
