@@ -1690,14 +1690,14 @@ router.get('/stats', requireAuth, async (req, res) => {
 router.get('/audit-log', requireAuth, requireRole('super_admin', 'admin'), async (req, res) => {
   try {
     // Ensure limit and offset are valid integers
-    const limitParam = parseInt(req.query.limit, 10);
-    const offsetParam = parseInt(req.query.offset, 10);
-    const limit = Math.min(isNaN(limitParam) ? 100 : limitParam, 1000); // Max 1000
-    const offset = Math.max(isNaN(offsetParam) ? 0 : offsetParam, 0); // Min 0
+    const limitParam = req.query.limit ? parseInt(String(req.query.limit), 10) : NaN;
+    const offsetParam = req.query.offset ? parseInt(String(req.query.offset), 10) : NaN;
+    const limit = isNaN(limitParam) || limitParam <= 0 ? 100 : Math.min(limitParam, 1000); // Max 1000
+    const offset = isNaN(offsetParam) || offsetParam < 0 ? 0 : offsetParam; // Min 0
     
-    // Ensure they are actual integers (not strings)
-    const limitInt = Number.isInteger(limit) ? limit : 100;
-    const offsetInt = Number.isInteger(offset) ? offset : 0;
+    // Ensure they are actual integers (not strings or floats)
+    const limitInt = Math.floor(Number(limit));
+    const offsetInt = Math.floor(Number(offset));
     
     // Check database connection
     try {
