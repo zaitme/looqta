@@ -1695,6 +1695,10 @@ router.get('/audit-log', requireAuth, requireRole('super_admin', 'admin'), async
     const limit = Math.min(isNaN(limitParam) ? 100 : limitParam, 1000); // Max 1000
     const offset = Math.max(isNaN(offsetParam) ? 0 : offsetParam, 0); // Min 0
     
+    // Ensure they are actual integers (not strings)
+    const limitInt = Number.isInteger(limit) ? limit : 100;
+    const offsetInt = Number.isInteger(offset) ? offset : 0;
+    
     // Check database connection
     try {
       await db.execute('SELECT 1');
@@ -1709,7 +1713,7 @@ router.get('/audit-log', requireAuth, requireRole('super_admin', 'admin'), async
        LEFT JOIN admin_users u ON a.user_id = u.id
        ORDER BY a.created_at DESC
        LIMIT ? OFFSET ?`,
-      [limit, offset]
+      [limitInt, offsetInt]
     );
     
     const sanitizedLogs = logs.map(log => {

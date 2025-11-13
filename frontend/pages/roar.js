@@ -1235,8 +1235,14 @@ function AdManagement() {
               <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-pink-500 to-rose-500 rounded-3xl flex items-center justify-center shadow-2xl">
                 <span className="text-5xl">📢</span>
               </div>
-              <p className="text-gray-600 font-semibold text-lg">No ad placements found</p>
-              <p className="text-gray-500 text-sm mt-2">Create your first ad placement to get started</p>
+              <p className="text-gray-600 font-semibold text-lg mb-4">No ad placements found</p>
+              <p className="text-gray-500 text-sm mb-6">Create your first ad placement to get started</p>
+              <button
+                onClick={() => setShowCreate(true)}
+                className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98] duration-200"
+              >
+                + Create Your First Ad
+              </button>
             </div>
           ) : (
             <div className="overflow-x-auto">
