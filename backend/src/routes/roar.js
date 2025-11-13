@@ -775,6 +775,8 @@ router.get('/ads', requireAuth, auditLog('LIST_ADS', 'ad_placement'), async (req
        ORDER BY a.priority DESC, a.created_at DESC`
     );
     
+    logger.debug('Fetched ads from database', { count: ads.length });
+    
     const sanitizedAds = ads.map(ad => {
       let targetAudience = null;
       try {
@@ -789,6 +791,7 @@ router.get('/ads', requireAuth, auditLog('LIST_ADS', 'ad_placement'), async (req
       };
     });
     
+    logger.debug('Sending ads response', { count: sanitizedAds.length, success: true });
     res.json({ success: true, ads: sanitizedAds });
   } catch (error) {
     logger.error('Failed to get ads', { error: error.message });

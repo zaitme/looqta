@@ -1116,6 +1116,7 @@ function AdManagement() {
 
   useEffect(() => {
     loadAds();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadAds = async () => {
@@ -1126,15 +1127,27 @@ function AdManagement() {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' }
       });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Ad API error response:', response.status, errorText);
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
       const data = await response.json();
+      console.log('Ad API response:', data);
+      
       if (data.success) {
-        setAds(data.ads || []);
+        const adsArray = Array.isArray(data.ads) ? data.ads : [];
+        console.log('Setting ads:', adsArray.length, 'ads');
+        setAds(adsArray);
       } else {
+        console.error('Ad API returned success=false:', data.error);
         setError(data.error || 'Failed to load ads');
       }
     } catch (err) {
       console.error('Failed to load ads:', err);
-      setError('Failed to load ads. Please try again.');
+      setError(`Failed to load ads: ${err.message}. Please check your connection and try again.`);
     } finally {
       setLoading(false);
     }
