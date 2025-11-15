@@ -1,9 +1,11 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
+import Head from 'next/head';
 import PriceHistoryChart from '../../components/PriceHistoryChart';
 import PriceAlertForm from '../../components/PriceAlertForm';
 import SellerBadge from '../../components/SellerBadge';
+import WhatsAppShare from '../../components/WhatsAppShare';
 import { generateProductId, getAffiliateUrl } from '../../utils/productUtils';
 
 /**
@@ -86,9 +88,76 @@ export default function ProductDetailPage() {
   }
 
   const productId = product.productId || generateProductId(product.url, product.site);
+  const siteUrl = typeof window !== 'undefined' 
+    ? `${window.location.protocol}//${window.location.host}`
+    : 'https://looqta.com';
+  const productUrl = `${siteUrl}/product/${id}`;
+  const productImage = product.image || product.image_url || getImageFromUrl(product.url) || `${siteUrl}/og-image.jpg`;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/40 to-purple-50/30 py-8">
+    <>
+      <Head>
+        {/* SEO Meta Tags */}
+        <title>{product.product_name} - Looqta Price Comparison</title>
+        <meta name="description" content={`Best price: ${product.price || 'N/A'} ${product.currency || 'SAR'} on ${product.site || 'Looqta'}. Compare prices from Amazon and Noon.`} />
+        
+        {/* Open Graph Meta Tags */}
+        <meta property="og:title" content={`${product.product_name} - Looqta`} />
+        <meta property="og:description" content={`Best price: ${product.price || 'N/A'} ${product.currency || 'SAR'} on ${product.site || 'Looqta'}`} />
+        <meta property="og:image" content={productImage} />
+        <meta property="og:url" content={productUrl} />
+        <meta property="og:type" content="product" />
+        <meta property="og:site_name" content="Looqta" />
+        
+        {/* Product-specific Open Graph tags */}
+        <meta property="product:price:amount" content={product.price || '0'} />
+        <meta property="product:price:currency" content={product.currency || 'SAR'} />
+        <meta property="product:availability" content="in stock" />
+        <meta property="product:condition" content="new" />
+        <meta property="product:retailer" content={product.site || 'Looqta'} />
+        
+        {/* Twitter Card */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={`${product.product_name} - Looqta`} />
+        <meta name="twitter:description" content={`Best price: ${product.price || 'N/A'} ${product.currency || 'SAR'}`} />
+        <meta name="twitter:image" content={productImage} />
+        
+        {/* WhatsApp Meta Tags */}
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        
+        {/* Structured Data */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "Product",
+              "name": product.product_name,
+              "image": productImage,
+              "description": `Best price: ${product.price || 'N/A'} ${product.currency || 'SAR'} on ${product.site || 'Looqta'}`,
+              "brand": {
+                "@type": "Brand",
+                "name": product.site || "Looqta"
+              },
+              "offers": {
+                "@type": "Offer",
+                "url": product.url || productUrl,
+                "priceCurrency": product.currency || "SAR",
+                "price": product.price || "0",
+                "priceValidUntil": new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+                "availability": "https://schema.org/InStock",
+                "seller": {
+                  "@type": "Organization",
+                  "name": product.site || "Looqta"
+                }
+              }
+            })
+          }}
+        />
+      </Head>
+      
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/40 to-purple-50/30 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Back Button */}
         <button
@@ -150,6 +219,11 @@ export default function ProductDetailPage() {
                 </span>
               </div>
 
+              {/* WhatsApp Share */}
+              <div className="mb-4">
+                <WhatsAppShare product={product} />
+              </div>
+
               {/* Buy Button */}
               <a
                 href={affiliateUrl || product.url || '#'}
@@ -196,6 +270,7 @@ export default function ProductDetailPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }
 

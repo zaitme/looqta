@@ -1,5 +1,6 @@
 'use client';
 import SellerBadge from './SellerBadge';
+import WhatsAppShare from './WhatsAppShare';
 import { generateProductId, getAffiliateUrl } from '../utils/productUtils';
 import { useState, useEffect } from 'react';
 
@@ -280,6 +281,11 @@ export default function ResultCard({ r, index, isBestDeal, isSecondDeal, isThird
               )}
             </div>
           )}
+        </div>
+        
+        {/* WhatsApp Share Button */}
+        <div className="mb-4">
+          <WhatsAppShare product={r} />
         </div>
         
         {/* Action Button - Use affiliate URL */}

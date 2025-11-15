@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
+import Head from 'next/head';
 import SearchBox from '../components/SearchBox';
 import ResultCard from '../components/ResultCard';
 import Spinner from '../components/Spinner';
@@ -57,8 +58,94 @@ export default function Page(){
     }
   }, [loading, scraperStatuses]);
 
+  const siteUrl = typeof window !== 'undefined' 
+    ? `${window.location.protocol}//${window.location.host}`
+    : 'https://looqta.com';
+
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/40 to-purple-50/30 relative overflow-hidden">
+    <>
+      <Head>
+        {/* SEO Meta Tags */}
+        <title>Looqta (لقطة) — Smart Price Comparison Platform | Compare Amazon & Noon Prices</title>
+        <meta name="description" content="Compare prices from Amazon and Noon in real-time. Find the best deals on products in Saudi Arabia. Smart choices for smart shoppers." />
+        <meta name="keywords" content="price comparison, Amazon, Noon, Saudi Arabia, online shopping, best deals, compare prices, لقطة, سعر, مقارنة" />
+        <meta name="author" content="Looqta" />
+        <meta name="language" content="English, Arabic" />
+        <meta name="geo.region" content="SA" />
+        <meta name="geo.placename" content="Saudi Arabia" />
+        
+        {/* Open Graph Meta Tags */}
+        <meta property="og:title" content="Looqta (لقطة) — Smart Price Comparison Platform" />
+        <meta property="og:description" content="Compare prices from Amazon and Noon in real-time. Find the best deals on products in Saudi Arabia." />
+        <meta property="og:image" content={`${siteUrl}/og-image.jpg`} />
+        <meta property="og:url" content={siteUrl} />
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="Looqta" />
+        <meta property="og:locale" content="en_US" />
+        <meta property="og:locale:alternate" content="ar_SA" />
+        
+        {/* Twitter Card */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content="Looqta (لقطة) — Smart Price Comparison Platform" />
+        <meta name="twitter:description" content="Compare prices from Amazon and Noon in real-time." />
+        <meta name="twitter:image" content={`${siteUrl}/og-image.jpg`} />
+        
+        {/* WhatsApp Meta Tags */}
+        <meta property="og:image:width" content="1200" />
+        <meta property="og:image:height" content="630" />
+        
+        {/* Canonical URL */}
+        <link rel="canonical" href={siteUrl} />
+        
+        {/* Structured Data */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "WebSite",
+              "name": "Looqta",
+              "alternateName": "لقطة",
+              "url": siteUrl,
+              "description": "Compare prices from Amazon and Noon in real-time. Find the best deals on products in Saudi Arabia.",
+              "potentialAction": {
+                "@type": "SearchAction",
+                "target": {
+                  "@type": "EntryPoint",
+                  "urlTemplate": `${siteUrl}/?q={search_term_string}`
+                },
+                "query-input": "required name=search_term_string"
+              },
+              "sameAs": [
+                "https://twitter.com/looqta",
+                "https://facebook.com/looqta"
+              ]
+            })
+          }}
+        />
+        
+        {/* Organization Structured Data */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "Organization",
+              "name": "Looqta",
+              "alternateName": "لقطة",
+              "url": siteUrl,
+              "logo": `${siteUrl}/logo.png`,
+              "description": "Smart price comparison platform for Saudi Arabia",
+              "address": {
+                "@type": "PostalAddress",
+                "addressCountry": "SA"
+              }
+            })
+          }}
+        />
+      </Head>
+      
+      <main className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/40 to-purple-50/30 relative overflow-hidden">
       {/* Animated Background Elements */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-300 rounded-full mix-blend-multiply filter blur-xl opacity-30 animate-float"></div>
@@ -495,5 +582,6 @@ export default function Page(){
         </div>
       </div>
     </main>
+    </>
   );
 }
