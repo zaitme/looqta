@@ -460,14 +460,27 @@ function AffiliateAnalytics() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [daysFilter, setDaysFilter] = useState(30);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     fetchAnalytics();
+    
+    // Set up real-time refresh every 30 seconds
+    const interval = setInterval(() => {
+      fetchAnalytics();
+    }, 30000);
+    
+    return () => clearInterval(interval);
   }, [daysFilter]);
 
   const fetchAnalytics = async () => {
     try {
-      setLoading(true);
+      if (loading && analytics) {
+        // Don't show loading spinner on refresh, just update data
+      } else {
+        setLoading(true);
+      }
       setError(null);
       const response = await fetch(`${API_BASE}/affiliate/analytics?days=${daysFilter}`, {
         credentials: 'include',
@@ -572,13 +585,28 @@ function AffiliateAnalytics() {
       </div>
 
       {/* Clicks Over Time Chart */}
-      {analytics.clicksByDay && analytics.clicksByDay.length > 0 && (
+      {mounted && analytics && analytics.clicksByDay && analytics.clicksByDay.length > 0 && (
         <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-200/50 mb-8">
           <h3 className="text-2xl font-black text-gray-800 mb-4">Clicks Over Time</h3>
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={analytics.clicksByDay.map(d => ({ ...d, date: new Date(d.date).toLocaleDateString() }))}>
+            <LineChart 
+              data={analytics.clicksByDay
+                .map(d => ({ 
+                  ...d, 
+                  date: d.date ? new Date(d.date).toLocaleDateString() : d.date,
+                  clicks: parseInt(d.clicks) || 0
+                }))
+                .reverse() // Show oldest to newest
+              }
+            >
               <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-              <XAxis dataKey="date" stroke="#666" />
+              <XAxis 
+                dataKey="date" 
+                stroke="#666"
+                angle={-45}
+                textAnchor="end"
+                height={80}
+              />
               <YAxis stroke="#666" />
               <Tooltip 
                 contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #e0e0e0', borderRadius: '8px' }}
@@ -598,7 +626,7 @@ function AffiliateAnalytics() {
       )}
 
       {/* Clicks by Site - Chart and List */}
-      {analytics.clicksBySite && analytics.clicksBySite.length > 0 && (
+      {mounted && analytics && analytics.clicksBySite && analytics.clicksBySite.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           {/* Pie Chart */}
           <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-200/50">
@@ -606,7 +634,11 @@ function AffiliateAnalytics() {
             <ResponsiveContainer width="100%" height={300}>
               <PieChart>
                 <Pie
-                  data={analytics.clicksBySite}
+                  data={analytics.clicksBySite.map(s => ({
+                    ...s,
+                    click_count: parseInt(s.click_count) || 0,
+                    site: s.site || 'Unknown'
+                  }))}
                   dataKey="click_count"
                   nameKey="site"
                   cx="50%"
@@ -628,7 +660,11 @@ function AffiliateAnalytics() {
           <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-200/50">
             <h3 className="text-2xl font-black text-gray-800 mb-4">Clicks by Site (Bar)</h3>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={analytics.clicksBySite}>
+              <BarChart data={analytics.clicksBySite.map(s => ({
+                ...s,
+                click_count: parseInt(s.click_count) || 0,
+                site: s.site || 'Unknown'
+              }))}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
                 <XAxis dataKey="site" stroke="#666" />
                 <YAxis stroke="#666" />
@@ -759,14 +795,27 @@ function SearchAnalytics() {
   const [daysFilter, setDaysFilter] = useState(30);
   const [selectedKeywords, setSelectedKeywords] = useState([]);
   const [addingToBackground, setAddingToBackground] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     fetchAnalytics();
+    
+    // Set up real-time refresh every 30 seconds
+    const interval = setInterval(() => {
+      fetchAnalytics();
+    }, 30000);
+    
+    return () => clearInterval(interval);
   }, [daysFilter]);
 
   const fetchAnalytics = async () => {
     try {
-      setLoading(true);
+      if (loading && analytics) {
+        // Don't show loading spinner on refresh, just update data
+      } else {
+        setLoading(true);
+      }
       setError(null);
       const response = await fetch(`${API_BASE}/search/analytics?days=${daysFilter}`, {
         credentials: 'include',
@@ -909,13 +958,29 @@ function SearchAnalytics() {
       </div>
 
       {/* Searches Over Time Chart */}
-      {analytics.searchesByDay && analytics.searchesByDay.length > 0 && (
+      {mounted && analytics && analytics.searchesByDay && analytics.searchesByDay.length > 0 && (
         <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-200/50 mb-8">
           <h3 className="text-2xl font-black text-gray-800 mb-4">Searches Over Time</h3>
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={analytics.searchesByDay.map(d => ({ ...d, date: new Date(d.date).toLocaleDateString() }))}>
+            <LineChart 
+              data={analytics.searchesByDay
+                .map(d => ({ 
+                  ...d, 
+                  date: d.date ? new Date(d.date).toLocaleDateString() : d.date,
+                  search_count: parseInt(d.search_count) || 0,
+                  unique_queries: parseInt(d.unique_queries) || 0
+                }))
+                .reverse() // Show oldest to newest
+              }
+            >
               <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-              <XAxis dataKey="date" stroke="#666" />
+              <XAxis 
+                dataKey="date" 
+                stroke="#666"
+                angle={-45}
+                textAnchor="end"
+                height={80}
+              />
               <YAxis stroke="#666" />
               <Tooltip 
                 contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #e0e0e0', borderRadius: '8px' }}
@@ -959,19 +1024,28 @@ function SearchAnalytics() {
           </div>
           
           {/* Bar Chart */}
-          <div className="mb-6">
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={analytics.topKeywords.slice(0, 10)}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                <XAxis dataKey="keyword" stroke="#666" angle={-45} textAnchor="end" height={100} />
-                <YAxis stroke="#666" />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #e0e0e0', borderRadius: '8px' }}
-                />
-                <Bar dataKey="search_count" fill="#6366f1" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
+          {mounted && (
+            <div className="mb-6">
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={analytics.topKeywords
+                  .slice(0, 10)
+                  .map(k => ({
+                    ...k,
+                    search_count: parseInt(k.search_count) || 0,
+                    keyword: k.keyword || 'Unknown'
+                  }))
+                }>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                  <XAxis dataKey="keyword" stroke="#666" angle={-45} textAnchor="end" height={100} />
+                  <YAxis stroke="#666" />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #e0e0e0', borderRadius: '8px' }}
+                  />
+                  <Bar dataKey="search_count" fill="#6366f1" radius={[8, 8, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
 
           {/* Keywords Table */}
           <div className="overflow-x-auto">
@@ -1467,9 +1541,28 @@ function TokenManagement() {
               </div>
             </div>
             <button
-              onClick={() => {
-                navigator.clipboard.writeText(newToken.token);
-                alert('Token copied to clipboard!');
+              onClick={async () => {
+                try {
+                  if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(newToken.token);
+                    alert('Token copied to clipboard!');
+                  } else {
+                    // Fallback
+                    const textArea = document.createElement('textarea');
+                    textArea.value = newToken.token;
+                    textArea.style.position = 'fixed';
+                    textArea.style.left = '-999999px';
+                    document.body.appendChild(textArea);
+                    textArea.focus();
+                    textArea.select();
+                    document.execCommand('copy');
+                    document.body.removeChild(textArea);
+                    alert('Token copied to clipboard!');
+                  }
+                } catch (err) {
+                  console.error('Failed to copy token:', err);
+                  alert(`Token: ${newToken.token}`);
+                }
               }}
               className="ml-4 px-4 py-2 bg-green-500 hover:bg-green-600 text-white font-bold rounded-lg transition-all"
             >
@@ -3218,13 +3311,35 @@ function AddCacheKeyForm({ onClose, onSuccess }) {
 function ViewCacheKeyModal({ keyData, onClose, onEdit, onDelete }) {
   const [copied, setCopied] = useState(false);
 
-  const copyValue = () => {
+  const copyValue = async () => {
     const valueStr = typeof keyData.value === 'string' 
       ? keyData.value 
       : JSON.stringify(keyData.value, null, 2);
-    navigator.clipboard.writeText(valueStr);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(valueStr);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      } else {
+        // Fallback
+        const textArea = document.createElement('textarea');
+        textArea.value = valueStr;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    } catch (err) {
+      console.error('Failed to copy:', err);
+      // Last resort: show in alert
+      alert(`Value:\n${valueStr.substring(0, 500)}${valueStr.length > 500 ? '...' : ''}`);
+    }
   };
 
   const formatTTL = (ttl) => {

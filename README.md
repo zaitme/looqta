@@ -452,7 +452,8 @@ Results are cached in Redis with:
 ### Features
 
 - **Dashboard**: System statistics and overview
-- **Affiliate Analytics**: Track affiliate link clicks, top products, clicks by site, and recent activity
+- **Affiliate Analytics**: Track affiliate link clicks with interactive charts, top products, clicks by site, and recent activity
+- **Search Analytics**: Track search queries, top keywords, and add popular searches to background refresh jobs
 - **Ad Management**: Create, edit, delete ad placements with Google AdSense support
 - **User Management**: Manage admin users
 - **System Settings**: Configure system parameters
@@ -479,6 +480,30 @@ Navigate to the "Affiliate Analytics" tab in the ROAR dashboard to view all affi
 - Click timestamp
 - IP address and user agent
 - Affiliate URL and original product URL
+
+**Charts & Visualizations:**
+- **Clicks Over Time**: Line chart showing daily affiliate clicks trend
+- **Clicks by Site**: Pie chart and bar chart showing distribution across retailers
+- **Top Products**: Table with most clicked products for revenue optimization
+
+### Search Analytics
+
+The ROAR dashboard includes comprehensive search query analytics:
+
+**Features:**
+- **Summary Statistics**: Total searches, unique queries, average results, cache hit rate
+- **Searches Over Time**: Line chart showing daily search trends
+- **Top Keywords**: Bar chart and table of most searched keywords
+- **Background Job Integration**: Select keywords and add them to background refresh jobs
+- **Time Filters**: Filter analytics by 7, 30, or 90 days
+
+**Access:**
+Navigate to the "Search Analytics" tab in the ROAR dashboard to view all search metrics.
+
+**Background Jobs:**
+- Select popular keywords from the analytics table
+- Click "Add to Background Jobs" to automatically refresh these queries
+- Helps keep popular searches cached and up-to-date
 
 ### Proxy Setup
 
