@@ -11,6 +11,7 @@ const cache = require('../cache/redis');
 const { shouldRebuildCache, mergeResults, findNewAndUpdatedItems, getProductKey } = require('../utils/cache-utils');
 const { validateRecords } = require('../utils/product-validation');
 const { upsertProductsBatch } = require('../utils/product-upsert');
+const { trackSearchQuery } = require('../utils/search-telemetry');
 
 /**
  * Transform validated product records to frontend format
@@ -33,6 +34,7 @@ function transformToFrontendFormat(results) {
 router.get('/stream', async (req, res) => {
   const q = (req.query.q || req.query.query || '').trim();
   const forceFresh = req.query.forceFresh === 'true' || req.query.fresh === 'true';
+  const startTime = Date.now();
   
   // Additional validation (input already sanitized by middleware)
   if (!q) {
@@ -110,6 +112,16 @@ router.get('/stream', async (req, res) => {
           totalResults: frontendCachedResults.length,
           message: 'Results loaded from cache. Updating in background...'
         });
+        
+        // Track search query (non-blocking)
+        trackSearchQuery(
+          q,
+          frontendCachedResults.length,
+          true, // fromCache
+          req.ip,
+          req.headers['user-agent'] || null,
+          Date.now() - startTime
+        );
         
         // Continue scraping in background for delta updates
         // Don't end connection - keep it open for updates
@@ -423,10 +435,22 @@ router.get('/stream', async (req, res) => {
       scraperStatus: scraperStatus
     });
     
+    // Track search query (non-blocking)
+    const responseTime = Date.now() - startTime;
+    trackSearchQuery(
+      q,
+      frontendFinalResults.length,
+      false, // fromCache
+      req.ip,
+      req.headers['user-agent'] || null,
+      responseTime
+    );
+    
     logger.info('Streaming search completed', { 
       query: q, 
       resultCount: finalResults.length, 
-      fromCache: false 
+      fromCache: false,
+      responseTime
     });
     
   } catch (error) {

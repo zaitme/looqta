@@ -19,6 +19,7 @@
  */
 'use client';
 import { useState, useEffect } from 'react';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
 // Use proxy route - works behind reverse proxy and avoids CORS issues
 // The proxy route runs server-side in Next.js and forwards requests to backend
@@ -118,6 +119,7 @@ export default function RoarAdmin() {
       <AdminLayout user={user} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={checkAuth}>
         {activeTab === 'dashboard' && <Dashboard />}
         {activeTab === 'affiliate' && <AffiliateAnalytics />}
+        {activeTab === 'search' && <SearchAnalytics />}
         {activeTab === 'users' && <UserManagement />}
         {activeTab === 'tokens' && <TokenManagement />}
         {activeTab === 'ads' && <AdManagement />}
@@ -281,6 +283,7 @@ function AdminLayout({ user, activeTab, setActiveTab, onLogout, children }) {
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'affiliate', label: 'Affiliate Analytics', icon: '🔗' },
+    { id: 'search', label: 'Search Analytics', icon: '🔍' },
     { id: 'users', label: 'Users', icon: '👥' },
     { id: 'tokens', label: 'API Tokens', icon: '🔑' },
     { id: 'ads', label: 'Ad Placements', icon: '📢' },
@@ -568,10 +571,81 @@ function AffiliateAnalytics() {
         </div>
       </div>
 
-      {/* Clicks by Site */}
+      {/* Clicks Over Time Chart */}
+      {analytics.clicksByDay && analytics.clicksByDay.length > 0 && (
+        <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-200/50 mb-8">
+          <h3 className="text-2xl font-black text-gray-800 mb-4">Clicks Over Time</h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={analytics.clicksByDay.map(d => ({ ...d, date: new Date(d.date).toLocaleDateString() }))}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+              <XAxis dataKey="date" stroke="#666" />
+              <YAxis stroke="#666" />
+              <Tooltip 
+                contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #e0e0e0', borderRadius: '8px' }}
+              />
+              <Legend />
+              <Line 
+                type="monotone" 
+                dataKey="clicks" 
+                stroke="#6366f1" 
+                strokeWidth={3}
+                dot={{ fill: '#6366f1', r: 4 }}
+                name="Clicks"
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Clicks by Site - Chart and List */}
+      {analytics.clicksBySite && analytics.clicksBySite.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          {/* Pie Chart */}
+          <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-200/50">
+            <h3 className="text-2xl font-black text-gray-800 mb-4">Clicks by Site</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={analytics.clicksBySite}
+                  dataKey="click_count"
+                  nameKey="site"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={100}
+                  label={({ site, click_count }) => `${site}: ${click_count}`}
+                >
+                  {analytics.clicksBySite.map((entry, index) => {
+                    const colors = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981'];
+                    return <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />;
+                  })}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          
+          {/* Bar Chart */}
+          <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-200/50">
+            <h3 className="text-2xl font-black text-gray-800 mb-4">Clicks by Site (Bar)</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={analytics.clicksBySite}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                <XAxis dataKey="site" stroke="#666" />
+                <YAxis stroke="#666" />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #e0e0e0', borderRadius: '8px' }}
+                />
+                <Bar dataKey="click_count" fill="#6366f1" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+      
+      {/* Clicks by Site - Detailed List */}
       {analytics.clicksBySite && analytics.clicksBySite.length > 0 && (
         <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-200/50 mb-8">
-          <h3 className="text-2xl font-black text-gray-800 mb-4">Clicks by Site</h3>
+          <h3 className="text-2xl font-black text-gray-800 mb-4">Site Performance Details</h3>
           <div className="space-y-3">
             {analytics.clicksBySite.map((site, index) => (
               <div key={index} className="flex items-center justify-between p-4 bg-gradient-to-r from-indigo-50/50 to-purple-50/50 rounded-xl">
@@ -660,6 +734,305 @@ function AffiliateAnalytics() {
                     </td>
                     <td className="p-3 text-sm text-gray-500 font-mono">
                       {click.ip_address || 'N/A'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Search Analytics Component
+ * Displays search query statistics and top keywords
+ * 
+ * @component
+ */
+function SearchAnalytics() {
+  const [analytics, setAnalytics] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [daysFilter, setDaysFilter] = useState(30);
+  const [selectedKeywords, setSelectedKeywords] = useState([]);
+  const [addingToBackground, setAddingToBackground] = useState(false);
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, [daysFilter]);
+
+  const fetchAnalytics = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch(`${API_BASE}/search/analytics?days=${daysFilter}`, {
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        setAnalytics(data.analytics);
+      } else {
+        setError(data.error || 'Failed to load search analytics');
+      }
+    } catch (err) {
+      console.error('Failed to fetch search analytics:', err);
+      setError('Failed to load search analytics');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddToBackground = async () => {
+    if (selectedKeywords.length === 0) {
+      alert('Please select keywords to add to background jobs');
+      return;
+    }
+
+    try {
+      setAddingToBackground(true);
+      const response = await fetch(`${API_BASE}/search/add-to-background`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keywords: selectedKeywords })
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        alert(`Successfully added ${selectedKeywords.length} keywords to background jobs!`);
+        setSelectedKeywords([]);
+      } else {
+        alert(`Error: ${data.error}`);
+      }
+    } catch (err) {
+      console.error('Failed to add keywords:', err);
+      alert('Failed to add keywords to background jobs');
+    } finally {
+      setAddingToBackground(false);
+    }
+  };
+
+  const toggleKeyword = (keyword) => {
+    setSelectedKeywords(prev => 
+      prev.includes(keyword) 
+        ? prev.filter(k => k !== keyword)
+        : [...prev, keyword]
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="text-center py-16">
+        <div className="relative mb-6 mx-auto w-16 h-16">
+          <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin [animation-direction:reverse] [animation-duration:0.8s]"></div>
+          </div>
+        </div>
+        <p className="text-gray-600 font-semibold">Loading search analytics...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-16">
+        <div className="bg-white/70 backdrop-blur-xl rounded-2xl border-2 border-red-200 p-8 max-w-md mx-auto shadow-lg">
+          <p className="text-red-600 font-bold">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!analytics) {
+    return (
+      <div className="text-center py-16">
+        <div className="bg-white/70 backdrop-blur-xl rounded-2xl border border-gray-200/50 p-8 max-w-md mx-auto shadow-lg">
+          <p className="text-gray-600 font-semibold">No search analytics available</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h2 className="text-4xl lg:text-5xl font-black bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
+            Search Analytics
+          </h2>
+          <p className="text-gray-600 font-semibold">Track search queries and optimize background jobs</p>
+        </div>
+        <select
+          value={daysFilter}
+          onChange={(e) => setDaysFilter(parseInt(e.target.value))}
+          className="px-4 py-2 rounded-xl border border-gray-300 bg-white/70 backdrop-blur-xl font-semibold"
+        >
+          <option value={7}>Last 7 days</option>
+          <option value={30}>Last 30 days</option>
+          <option value={90}>Last 90 days</option>
+        </select>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-8">
+        <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-200/50">
+          <p className="text-sm text-gray-600 mb-3 font-semibold uppercase tracking-wide">Total Searches</p>
+          <p className="text-3xl lg:text-4xl font-black bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
+            {analytics.summary.totalSearches.toLocaleString()}
+          </p>
+        </div>
+        <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-200/50">
+          <p className="text-sm text-gray-600 mb-3 font-semibold uppercase tracking-wide">Unique Queries</p>
+          <p className="text-3xl lg:text-4xl font-black bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+            {analytics.summary.uniqueQueries.toLocaleString()}
+          </p>
+        </div>
+        <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-200/50">
+          <p className="text-sm text-gray-600 mb-3 font-semibold uppercase tracking-wide">Avg Results</p>
+          <p className="text-3xl lg:text-4xl font-black bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
+            {analytics.summary.avgResults}
+          </p>
+        </div>
+        <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-200/50">
+          <p className="text-sm text-gray-600 mb-3 font-semibold uppercase tracking-wide">Cache Hits</p>
+          <p className="text-3xl lg:text-4xl font-black bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+            {analytics.summary.cacheHits.toLocaleString()}
+          </p>
+        </div>
+      </div>
+
+      {/* Searches Over Time Chart */}
+      {analytics.searchesByDay && analytics.searchesByDay.length > 0 && (
+        <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-200/50 mb-8">
+          <h3 className="text-2xl font-black text-gray-800 mb-4">Searches Over Time</h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={analytics.searchesByDay.map(d => ({ ...d, date: new Date(d.date).toLocaleDateString() }))}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+              <XAxis dataKey="date" stroke="#666" />
+              <YAxis stroke="#666" />
+              <Tooltip 
+                contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #e0e0e0', borderRadius: '8px' }}
+              />
+              <Legend />
+              <Line 
+                type="monotone" 
+                dataKey="search_count" 
+                stroke="#6366f1" 
+                strokeWidth={3}
+                dot={{ fill: '#6366f1', r: 4 }}
+                name="Searches"
+              />
+              <Line 
+                type="monotone" 
+                dataKey="unique_queries" 
+                stroke="#10b981" 
+                strokeWidth={3}
+                dot={{ fill: '#10b981', r: 4 }}
+                name="Unique Queries"
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Top Keywords */}
+      {analytics.topKeywords && analytics.topKeywords.length > 0 && (
+        <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-200/50 mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-2xl font-black text-gray-800">Top Searched Keywords</h3>
+            {selectedKeywords.length > 0 && (
+              <button
+                onClick={handleAddToBackground}
+                disabled={addingToBackground}
+                className="px-6 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50"
+              >
+                {addingToBackground ? 'Adding...' : `Add ${selectedKeywords.length} to Background Jobs`}
+              </button>
+            )}
+          </div>
+          
+          {/* Bar Chart */}
+          <div className="mb-6">
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={analytics.topKeywords.slice(0, 10)}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
+                <XAxis dataKey="keyword" stroke="#666" angle={-45} textAnchor="end" height={100} />
+                <YAxis stroke="#666" />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #e0e0e0', borderRadius: '8px' }}
+                />
+                <Bar dataKey="search_count" fill="#6366f1" radius={[8, 8, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Keywords Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left p-3 font-bold text-gray-700 w-12">
+                    <input
+                      type="checkbox"
+                      checked={selectedKeywords.length === analytics.topKeywords.length && analytics.topKeywords.length > 0}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedKeywords(analytics.topKeywords.map(k => k.keyword));
+                        } else {
+                          setSelectedKeywords([]);
+                        }
+                      }}
+                      className="w-5 h-5 rounded border-gray-300"
+                    />
+                  </th>
+                  <th className="text-left p-3 font-bold text-gray-700">Keyword</th>
+                  <th className="text-right p-3 font-bold text-gray-700">Searches</th>
+                  <th className="text-right p-3 font-bold text-gray-700">Avg Results</th>
+                  <th className="text-right p-3 font-bold text-gray-700">Cache Hits</th>
+                  <th className="text-left p-3 font-bold text-gray-700">Last Searched</th>
+                </tr>
+              </thead>
+              <tbody>
+                {analytics.topKeywords.map((keyword, index) => (
+                  <tr 
+                    key={index} 
+                    className={`border-b border-gray-100 hover:bg-indigo-50/30 transition-colors cursor-pointer ${
+                      selectedKeywords.includes(keyword.keyword) ? 'bg-indigo-50/50' : ''
+                    }`}
+                    onClick={() => toggleKeyword(keyword.keyword)}
+                  >
+                    <td className="p-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedKeywords.includes(keyword.keyword)}
+                        onChange={() => toggleKeyword(keyword.keyword)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-5 h-5 rounded border-gray-300"
+                      />
+                    </td>
+                    <td className="p-3">
+                      <p className="font-semibold text-gray-800">{keyword.keyword}</p>
+                    </td>
+                    <td className="p-3 text-right">
+                      <span className="text-xl font-black bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                        {keyword.search_count.toLocaleString()}
+                      </span>
+                    </td>
+                    <td className="p-3 text-right text-gray-600">
+                      {parseFloat(keyword.avg_results || 0).toFixed(1)}
+                    </td>
+                    <td className="p-3 text-right text-gray-600">
+                      {keyword.cache_hits || 0}
+                    </td>
+                    <td className="p-3 text-sm text-gray-600">
+                      {keyword.last_searched ? new Date(keyword.last_searched).toLocaleDateString() : 'N/A'}
                     </td>
                   </tr>
                 ))}

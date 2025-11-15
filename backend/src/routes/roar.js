@@ -1662,7 +1662,11 @@ router.get('/stats', requireAuth, async (req, res) => {
       affiliateClicksToday: 0,
       affiliateClicksThisWeek: 0,
       affiliateClicksThisMonth: 0,
-      uniqueAffiliateProducts: 0
+      uniqueAffiliateProducts: 0,
+      totalSearches: 0,
+      todaySearches: 0,
+      weekSearches: 0,
+      uniqueSearchQueries: 0
     };
     
     if (dbAvailable) {
@@ -1688,6 +1692,18 @@ router.get('/stats', requireAuth, async (req, res) => {
           `SELECT COUNT(DISTINCT product_id) as count FROM affiliate_clicks WHERE product_id IS NOT NULL`
         );
         
+        // Search query statistics
+        const [totalSearches] = await db.execute(`SELECT COUNT(*) as count FROM search_queries`);
+        const [todaySearches] = await db.execute(
+          `SELECT COUNT(*) as count FROM search_queries WHERE DATE(created_at) = CURDATE()`
+        );
+        const [weekSearches] = await db.execute(
+          `SELECT COUNT(*) as count FROM search_queries WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)`
+        );
+        const [uniqueSearchQueries] = await db.execute(
+          `SELECT COUNT(DISTINCT query_normalized) as count FROM search_queries`
+        );
+        
         stats = {
           users: userCount[0]?.count || 0,
           apiTokens: tokenCount[0]?.count || 0,
@@ -1700,7 +1716,11 @@ router.get('/stats', requireAuth, async (req, res) => {
           affiliateClicksToday: affiliateClicksToday[0]?.count || 0,
           affiliateClicksThisWeek: affiliateClicksThisWeek[0]?.count || 0,
           affiliateClicksThisMonth: affiliateClicksThisMonth[0]?.count || 0,
-          uniqueAffiliateProducts: uniqueProducts[0]?.count || 0
+          uniqueAffiliateProducts: uniqueProducts[0]?.count || 0,
+          totalSearches: totalSearches[0]?.count || 0,
+          todaySearches: todaySearches[0]?.count || 0,
+          weekSearches: weekSearches[0]?.count || 0,
+          uniqueSearchQueries: uniqueSearchQueries[0]?.count || 0
         };
       } catch (dbError) {
         logger.warn('Failed to fetch some stats from database', { error: dbError.message });
@@ -1718,6 +1738,70 @@ router.get('/stats', requireAuth, async (req, res) => {
     });
   } catch (error) {
     logger.error('Failed to get stats', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /roar/search/analytics
+ * Get search query analytics
+ */
+router.get('/search/analytics', requireAuth, async (req, res) => {
+  try {
+    const { getSearchAnalytics } = require('../utils/search-telemetry');
+    const days = parseInt(req.query.days) || 30;
+    
+    const analytics = await getSearchAnalytics(days);
+    
+    res.json({
+      success: true,
+      analytics
+    });
+  } catch (error) {
+    logger.error('Failed to get search analytics', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /roar/search/add-to-background
+ * Add search keywords to background refresh jobs
+ */
+router.post('/search/add-to-background', requireAuth, async (req, res) => {
+  try {
+    const { keywords } = req.body;
+    
+    if (!keywords || !Array.isArray(keywords) || keywords.length === 0) {
+      return res.status(400).json({ success: false, error: 'Keywords array is required' });
+    }
+    
+    // Get current popular queries from environment or database
+    const currentPopular = (process.env.POPULAR_QUERIES || '').split(',').filter(Boolean);
+    
+    // Add new keywords (avoid duplicates)
+    const updatedPopular = [...new Set([...currentPopular, ...keywords])];
+    
+    // Update environment variable (in production, you'd want to persist this)
+    process.env.POPULAR_QUERIES = updatedPopular.join(',');
+    
+    // Also update background worker if available
+    try {
+      const backgroundWorker = require('../workers/background-refresh-worker');
+      if (backgroundWorker && backgroundWorker.addPopularQueries) {
+        backgroundWorker.addPopularQueries(keywords);
+      }
+    } catch (workerError) {
+      logger.warn('Failed to update background worker', { error: workerError.message });
+    }
+    
+    res.json({
+      success: true,
+      message: 'Keywords added to background jobs',
+      totalKeywords: updatedPopular.length,
+      addedKeywords: keywords
+    });
+  } catch (error) {
+    logger.error('Failed to add keywords to background jobs', { error: error.message });
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -1742,15 +1826,6 @@ router.get('/affiliate/analytics', requireAuth, async (req, res) => {
     
     // Overall statistics
     const [totalClicks] = await db.execute(`SELECT COUNT(*) as count FROM affiliate_clicks`);
-    const [clicksByDay] = await db.execute(
-      `SELECT DATE(clicked_at) as date, COUNT(*) as clicks
-       FROM affiliate_clicks
-       WHERE clicked_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
-       GROUP BY DATE(clicked_at)
-       ORDER BY date DESC
-       LIMIT 30`,
-      [days]
-    );
     
     // Top products by clicks
     const [topProducts] = await db.execute(
@@ -1767,6 +1842,19 @@ router.get('/affiliate/analytics', requireAuth, async (req, res) => {
        ORDER BY click_count DESC
        LIMIT ?`,
       [limit]
+    );
+    
+    // Clicks by day (for charts)
+    const [clicksByDay] = await db.execute(
+      `SELECT 
+         DATE(clicked_at) as date,
+         COUNT(*) as clicks
+       FROM affiliate_clicks
+       WHERE clicked_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+       GROUP BY DATE(clicked_at)
+       ORDER BY date DESC
+       LIMIT 30`,
+      [days]
     );
     
     // Clicks by site

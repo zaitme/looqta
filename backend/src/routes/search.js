@@ -8,6 +8,7 @@ const { logPriceHistory } = require('../utils/price-history');
 const { incrementSearchCounts } = require('../utils/product-metrics');
 const { validateAndUpsertAtomic, upsertProductsBatch } = require('../utils/product-upsert');
 const { validateRecords } = require('../utils/product-validation');
+const { trackSearchQuery } = require('../utils/search-telemetry');
 
 /**
  * Transform validated product records to frontend format
@@ -110,6 +111,7 @@ async function performDeltaSearch(query, cachedResults, cacheKey) {
 router.get('/', async (req, res) => {
   const q = (req.query.q || req.query.query || '').trim();
   const forceFresh = req.query.forceFresh === 'true' || req.query.fresh === 'true';
+  const startTime = Date.now();
   
   // Additional validation (input already sanitized by middleware)
   if (!q) {
@@ -416,10 +418,22 @@ router.get('/', async (req, res) => {
     // Transform validated records to frontend format
     const frontendResults = transformToFrontendFormat(finalResults);
     
+    // Track search query (non-blocking)
+    const responseTime = Date.now() - startTime;
+    trackSearchQuery(
+      q,
+      frontendResults.length,
+      false, // fromCache
+      req.ip,
+      req.headers['user-agent'] || null,
+      responseTime
+    );
+    
     logger.info('Search completed', { 
       query: q, 
       resultCount: frontendResults.length, 
-      fromCache: false 
+      fromCache: false,
+      responseTime
     });
     res.json({ fromCache: false, data: frontendResults });
   } catch (e) {
