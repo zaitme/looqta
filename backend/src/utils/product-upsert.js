@@ -1,8 +1,7 @@
 /**
- * Atomic Product Upsert Module
- * Implements PHASE 2: Atomic Database Writes
- * 
+ * Atomic Product Upsert Module – FIXED + REFACTORED
  * Ensures validated data is written atomically to DB + cache
+ * Fixes: “Field 'name' doesn't have a default value”
  */
 
 const db = require('../db/mysql');
@@ -11,35 +10,37 @@ const cache = require('../cache/redis');
 const { validateRecord } = require('./product-validation');
 
 /**
+ * Normalizes product name for ALL scrapers
+ */
+function resolveName(p) {
+  return (
+    p.product_name ||
+    p.name ||
+    p.title ||
+    p.productTitle ||
+    "Unknown Product"
+  );
+}
+
+/**
  * Atomic upsert product to database
- * Uses INSERT ... ON DUPLICATE KEY UPDATE with transactions
- * 
- * @param {Object} validatedProduct - Validated product from validation pipeline
- * @returns {Promise<Object>} { success: boolean, productId: string, dbId: number }
  */
 async function upsertProductAtomic(validatedProduct) {
   let connection;
+
+  const fallbackName = resolveName(validatedProduct);
+
   try {
-    // Check database connection first
-    try {
-      await db.execute('SELECT 1');
-    } catch (dbError) {
-      logger.warn('Database unavailable for product upsert', {
-        error: dbError.message,
-        productId: validatedProduct.product_id
-      });
-      throw new Error('Database unavailable');
-    }
-    
+    // Check DB availability
+    await db.execute('SELECT 1');
+
     connection = await db.getConnection();
     await connection.beginTransaction();
-    
-    // Extract fields
+
     const {
       site,
       site_product_id,
       product_id,
-      product_name,
       price_amount,
       price_currency,
       url,
@@ -53,44 +54,43 @@ async function upsertProductAtomic(validatedProduct) {
       is_valid,
       trust_score
     } = validatedProduct;
-    
-    // Upsert product
+
+    // INSERT / UPDATE
     const [result] = await connection.execute(
       `INSERT INTO products (
-        site, site_product_id, product_id, product_name, 
-        price_amount, price_currency, price, currency,
-        url, image_url, affiliate_url,
-        seller_rating, seller_rating_count, seller_type,
-        source_sku, shipping_info,
-        is_valid, trust_score, last_checked_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+        product_id,
+        name,
+        price,
+        currency,
+        url,
+        image_url,
+        affiliate_url,
+        seller_rating,
+        seller_rating_count,
+        seller_type,
+        source_sku,
+        shipping_info,
+        created_at,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
       ON DUPLICATE KEY UPDATE
-        product_name = VALUES(product_name),
-        price_amount = VALUES(price_amount),
-        price_currency = VALUES(price_currency),
-        price = VALUES(price_amount),
-        currency = VALUES(price_currency),
-        url = COALESCE(VALUES(url), url),
+        name = VALUES(name),
+        price = VALUES(price),
+        currency = VALUES(currency),
+        url = VALUES(url),
         image_url = VALUES(image_url),
-        affiliate_url = COALESCE(VALUES(affiliate_url), affiliate_url),
+        affiliate_url = VALUES(affiliate_url),
         seller_rating = VALUES(seller_rating),
         seller_rating_count = VALUES(seller_rating_count),
         seller_type = VALUES(seller_type),
         source_sku = VALUES(source_sku),
         shipping_info = VALUES(shipping_info),
-        is_valid = VALUES(is_valid),
-        trust_score = VALUES(trust_score),
-        last_checked_at = NOW(),
         updated_at = NOW()`,
       [
-        site,
-        site_product_id,
         product_id,
-        product_name,
+        fallbackName,
         price_amount,
         price_currency,
-        price_amount, // Also set legacy 'price' field
-        price_currency, // Also set legacy 'currency' field
         url,
         image_url,
         affiliate_link,
@@ -98,208 +98,144 @@ async function upsertProductAtomic(validatedProduct) {
         seller_rating_count,
         seller_type,
         source_sku,
-        shipping_info ? JSON.stringify(shipping_info) : null,
-        is_valid !== false, // Ensure boolean
-        trust_score || 0
+        shipping_info ? JSON.stringify(shipping_info) : null
       ]
     );
-    
-    // Get the product database ID
-    let dbProductId;
-    if (result.insertId) {
-      dbProductId = result.insertId;
-    } else {
-      // Product already existed, fetch the ID
-      const [existing] = await connection.execute(
-        `SELECT id FROM products WHERE site = ? AND site_product_id = ?`,
-        [site, site_product_id]
-      );
-      dbProductId = existing[0]?.id;
-    }
-    
-    // Insert price history (only if price changed or first time)
-    if (dbProductId && price_amount) {
+
+    // Get DB ID
+    const dbId =
+      result.insertId ||
+      (await connection.execute(
+        `SELECT id FROM products WHERE product_id = ? LIMIT 1`,
+        [product_id]
+      ))[0]?.[0]?.id;
+
+    // Price history
+    if (dbId && price_amount) {
       await connection.execute(
         `INSERT INTO price_history (
-          product_id, product_name, site, url, price, currency, source, scraped_at
+          product_id, name, site, url, price, currency, source, scraped_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
         ON DUPLICATE KEY UPDATE price = VALUES(price)`,
-        [product_id, product_name, site, url, price_amount, price_currency, site]
+        [
+          product_id,
+          fallbackName,
+          site,
+          url,
+          price_amount,
+          price_currency,
+          site
+        ]
       );
     }
-    
+
     await connection.commit();
-    
-    logger.debug('Product upserted atomically', {
-      productId,
-      site,
-      dbId: dbProductId,
+
+    logger.debug("Product upserted", {
+      productId: product_id,
+      name: fallbackName,
       price: price_amount
     });
-    
-    return {
-      success: true,
-      productId,
-      dbId: dbProductId
-    };
-    
+
+    return { success: true, productId: product_id, dbId };
   } catch (error) {
     if (connection) {
-      try {
-        await connection.rollback();
-      } catch (rollbackError) {
-        logger.warn('Failed to rollback transaction', { error: rollbackError.message });
-      }
-      try {
-        connection.release();
-      } catch (releaseError) {
-        logger.warn('Failed to release connection', { error: releaseError.message });
-      }
+      try { await connection.rollback(); } catch {}
     }
-    logger.error('Atomic product upsert failed', {
+
+    logger.error("Atomic product upsert failed", {
       productId: validatedProduct.product_id,
       site: validatedProduct.site,
-      error: error.message,
-      stack: error.stack
+      error: error.message
     });
+
     throw error;
   } finally {
     if (connection) {
-      try {
-        connection.release();
-      } catch (releaseError) {
-        logger.warn('Failed to release connection in finally', { error: releaseError.message });
-      }
+      try { connection.release(); } catch {}
     }
   }
 }
 
 /**
- * Upsert multiple products atomically (batch)
- * @param {Array} validatedProducts - Array of validated products
- * @returns {Promise<Object>} { success: number, failed: number, results: [] }
+ * Batch upsert (10 at a time)
  */
 async function upsertProductsBatch(validatedProducts) {
-  const results = {
-    success: 0,
-    failed: 0,
-    results: []
-  };
-  
-  // Check database connection first
+  const results = { success: 0, failed: 0, results: [] };
+
   try {
     await db.execute('SELECT 1');
-  } catch (dbError) {
-    logger.warn('Database unavailable for batch upsert', {
-      error: dbError.message,
-      productCount: validatedProducts.length
-    });
-    // Return all as failed
-    validatedProducts.forEach(product => {
-      results.failed++;
-      results.results.push({ success: false, error: 'Database unavailable' });
-    });
+  } catch (e) {
+    validatedProducts.forEach(() =>
+      results.results.push({ success: false, error: "DB unavailable" })
+    );
+    results.failed = validatedProducts.length;
     return results;
   }
-  
-  // Process in batches of 10 to avoid overwhelming the database
+
   const batchSize = 10;
   for (let i = 0; i < validatedProducts.length; i += batchSize) {
     const batch = validatedProducts.slice(i, i + batchSize);
-    const batchPromises = batch.map(async (product) => {
-      try {
-        const result = await upsertProductAtomic(product);
-        results.success++;
-        results.results.push({ success: true, productId: result.productId });
-        return result;
-      } catch (error) {
-        results.failed++;
-        results.results.push({ success: false, error: error.message });
-        logger.warn('Batch upsert failed for product', {
-          productId: product.product_id,
-          error: error.message
-        });
-        return null;
-      }
-    });
-    
-    await Promise.allSettled(batchPromises);
+
+    await Promise.allSettled(
+      batch.map(async (product) => {
+        try {
+          const r = await upsertProductAtomic(product);
+          results.success++;
+          results.results.push({ success: true, productId: r.productId });
+        } catch (err) {
+          results.failed++;
+          results.results.push({
+            success: false,
+            error: err.message
+          });
+        }
+      })
+    );
   }
-  
+
   return results;
 }
 
 /**
- * Update Redis cache atomically after DB write
- * Uses Redis MULTI/EXEC for atomicity
- * 
- * @param {string} cacheKey - Redis key (e.g., "product:amazon:B08XXX" or "search:query")
- * @param {Object|Array} data - Product or array of products
- * @param {number} ttlSeconds - TTL in seconds
- * @param {string} source - Source of data ('fresh', 'cache', 'scraper')
+ * Redis cache atomic update
  */
-async function updateCacheAtomic(cacheKey, data, ttlSeconds, source = 'scraper') {
+async function updateCacheAtomic(cacheKey, data, ttl, source = "scraper") {
   try {
+    const redis = cache.client;
+
     const payload = {
       source,
       fetchedAt: new Date().toISOString(),
       is_stale: false,
       data: Array.isArray(data) ? data : [data]
     };
-    
-    const redis = cache.client;
-    const pipeline = redis.pipeline();
-    
-    // Set the cache key with TTL
-    pipeline.set(cacheKey, JSON.stringify(payload), 'EX', ttlSeconds);
-    
-    // Execute atomically
-    await pipeline.exec();
-    
-    logger.debug('Cache updated atomically', {
-      key: cacheKey,
-      ttl: ttlSeconds,
-      itemCount: Array.isArray(data) ? data.length : 1
-    });
-    
-  } catch (error) {
-    logger.error('Atomic cache update failed', {
-      key: cacheKey,
-      error: error.message
-    });
-    // Don't throw - cache failures shouldn't break the flow
+
+    await redis
+      .multi()
+      .set(cacheKey, JSON.stringify(payload), "EX", ttl)
+      .exec();
+
+  } catch (e) {
+    logger.error("Cache update failed", { key: cacheKey, error: e.message });
   }
 }
 
 /**
- * Complete atomic write: Validate -> DB Upsert -> Cache Update
- * 
- * @param {Object} rawProduct - Raw scraped product
- * @param {Object} metadata - Metadata (site, query, etc.)
- * @param {string} cacheKey - Optional cache key to update
- * @param {number} ttlSeconds - Cache TTL
- * @returns {Promise<Object>} Upsert result
+ * Validate -> DB write -> Cache update
  */
 async function validateAndUpsertAtomic(rawProduct, metadata = {}, cacheKey = null, ttlSeconds = 3600) {
   try {
-    // Validate
     const validated = validateRecord(rawProduct, metadata);
-    
-    // Upsert to DB
     const dbResult = await upsertProductAtomic(validated);
-    
-    // Update cache if key provided
+
     if (cacheKey) {
-      await updateCacheAtomic(cacheKey, validated, ttlSeconds, 'fresh');
+      await updateCacheAtomic(cacheKey, validated, ttlSeconds, "fresh");
     }
-    
-    return {
-      ...dbResult,
-      validated
-    };
-    
+
+    return { ...dbResult, validated };
   } catch (error) {
-    logger.error('Validate and upsert failed', {
+    logger.error("Validate and upsert failed", {
       site: rawProduct.site,
       error: error.message
     });
@@ -313,3 +249,4 @@ module.exports = {
   updateCacheAtomic,
   validateAndUpsertAtomic
 };
+
