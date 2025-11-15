@@ -476,9 +476,7 @@ function AffiliateAnalytics() {
 
   const fetchAnalytics = async () => {
     try {
-      if (loading && analytics) {
-        // Don't show loading spinner on refresh, just update data
-      } else {
+      if (!analytics) {
         setLoading(true);
       }
       setError(null);
@@ -811,9 +809,7 @@ function SearchAnalytics() {
 
   const fetchAnalytics = async () => {
     try {
-      if (loading && analytics) {
-        // Don't show loading spinner on refresh, just update data
-      } else {
+      if (!analytics) {
         setLoading(true);
       }
       setError(null);
