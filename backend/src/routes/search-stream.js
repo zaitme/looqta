@@ -13,6 +13,21 @@ const { validateRecords } = require('../utils/product-validation');
 const { upsertProductsBatch } = require('../utils/product-upsert');
 
 /**
+ * Transform validated product records to frontend format
+ * Maps image_url -> image, price_amount -> price, etc.
+ */
+function transformToFrontendFormat(results) {
+  if (!Array.isArray(results)) return results;
+  return results.map(result => ({
+    ...result,
+    image: result.image_url || result.image || null,
+    price: result.price_amount || result.price || null,
+    currency: result.price_currency || result.currency || 'SAR',
+    product_name: result.product_name || result.name || null
+  }));
+}
+
+/**
  * Stream search results as they become available from parallel scrapers
  */
 router.get('/stream', async (req, res) => {
@@ -78,18 +93,21 @@ router.get('/stream', async (req, res) => {
           return priceA - priceB;
         });
         
+        // Transform cached results to frontend format
+        const frontendCachedResults = transformToFrontendFormat(cachedResults);
+        
         // Send cached results immediately (best deals first)
         sendEvent('results', { 
           fromCache: true, 
-          data: cachedResults,
+          data: frontendCachedResults,
           message: 'Results from cache. Checking for updates...'
         });
         
         // Send cache-ready event so frontend can stop loading immediately
         sendEvent('cache-ready', {
           fromCache: true,
-          data: cachedResults,
-          totalResults: cachedResults.length,
+          data: frontendCachedResults,
+          totalResults: frontendCachedResults.length,
           message: 'Results loaded from cache. Updating in background...'
         });
         
@@ -144,11 +162,14 @@ router.get('/stream', async (req, res) => {
       
       incrementalResults = merged;
       
+      // Transform to frontend format before sending
+      const frontendIncrementalResults = transformToFrontendFormat(incrementalResults);
+      
       // Send incremental update
       sendEvent('results', {
         incremental: true,
-        data: incrementalResults,
-        totalCount: incrementalResults.length
+        data: frontendIncrementalResults,
+        totalCount: frontendIncrementalResults.length
       });
     };
     
@@ -209,15 +230,18 @@ router.get('/stream', async (req, res) => {
             return priceA - priceB;
           });
           
+          // Transform results to frontend format before sending
+          const frontendSortedResults = transformToFrontendFormat(sortedResults);
+          
           // Send results immediately as they arrive - sorted by best deals first
           sendEvent('results', {
             scraper: scraperName,
-            results: sortedResults,
-            count: sortedResults.length
+            results: frontendSortedResults,
+            count: frontendSortedResults.length
           });
           
           // Send incremental update with all results so far (best deals first)
-          sendIncrementalUpdate(sortedResults);
+          sendIncrementalUpdate(frontendSortedResults);
           
           // Add to all results
           allResults.push(...results);
@@ -388,11 +412,14 @@ router.get('/stream', async (req, res) => {
       }
     })();
     
+    // Transform final results to frontend format
+    const frontendFinalResults = transformToFrontendFormat(finalResults);
+    
     // Send final completion event with sorted results (best deals first)
     sendEvent('complete', {
       fromCache: false,
-      data: finalResults, // Already sorted by best deal
-      totalResults: finalResults.length,
+      data: frontendFinalResults, // Already sorted by best deal
+      totalResults: frontendFinalResults.length,
       scraperStatus: scraperStatus
     });
     

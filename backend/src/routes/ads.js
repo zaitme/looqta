@@ -30,10 +30,14 @@ router.get('/', async (req, res) => {
       return res.status(503).json({ success: false, ads: [] });
     }
     
+    // First, check total ads count for debugging
+    const [allAdsCount] = await db.execute('SELECT COUNT(*) as total FROM ad_placements');
+    logger.debug('Total ads in database', { total: allAdsCount[0]?.total || 0 });
+    
     // Build query - only active ads within date range
     let query = `
       SELECT id, name, position, ad_type, content, image_url, link_url, 
-             priority, start_date, end_date
+             priority, start_date, end_date, is_active
       FROM ad_placements
       WHERE is_active = 1
         AND (start_date IS NULL OR start_date <= ?)
@@ -50,7 +54,19 @@ router.get('/', async (req, res) => {
     
     query += ' ORDER BY priority DESC, created_at DESC';
     
+    logger.debug('Executing ads query', { 
+      position: position || 'all', 
+      now: now.toISOString(),
+      query: query.substring(0, 200) 
+    });
+    
     const [ads] = await db.execute(query, params);
+    
+    logger.info('Public ads query result', { 
+      count: ads.length, 
+      position: position || 'all',
+      ads: ads.map(ad => ({ id: ad.id, name: ad.name, position: ad.position, is_active: ad.is_active }))
+    });
     
     // Sanitize ads for public display
     const sanitizedAds = ads.map(ad => ({

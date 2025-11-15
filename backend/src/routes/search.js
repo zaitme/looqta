@@ -10,6 +10,21 @@ const { validateAndUpsertAtomic, upsertProductsBatch } = require('../utils/produ
 const { validateRecords } = require('../utils/product-validation');
 
 /**
+ * Transform validated product records to frontend format
+ * Maps image_url -> image, price_amount -> price, etc.
+ */
+function transformToFrontendFormat(results) {
+  if (!Array.isArray(results)) return results;
+  return results.map(result => ({
+    ...result,
+    image: result.image_url || result.image || null,
+    price: result.price_amount || result.price || null,
+    currency: result.price_currency || result.currency || 'SAR',
+    product_name: result.product_name || result.name || null
+  }));
+}
+
+/**
  * Perform delta search - check for new results compared to cached ones
  * Only adds new results, updates existing ones, removes stale ones
  * Returns updated results array
@@ -144,11 +159,14 @@ router.get('/', async (req, res) => {
           return priceA - priceB;
         });
         
+        // Transform cached results to frontend format
+        const frontendCachedResults = transformToFrontendFormat(cachedResults);
+        
         // Return cached results immediately, then continue scraping in background for delta updates
         // This allows users to see results right away while we check for new items
         res.json({ 
           fromCache: true, 
-          data: cachedResults,
+          data: frontendCachedResults,
           message: 'Results from cache. Checking for updates...'
         });
         
@@ -395,12 +413,15 @@ router.get('/', async (req, res) => {
       return priceA - priceB;
     });
     
+    // Transform validated records to frontend format
+    const frontendResults = transformToFrontendFormat(finalResults);
+    
     logger.info('Search completed', { 
       query: q, 
-      resultCount: finalResults.length, 
+      resultCount: frontendResults.length, 
       fromCache: false 
     });
-    res.json({ fromCache: false, data: finalResults });
+    res.json({ fromCache: false, data: frontendResults });
   } catch (e) {
     logger.error('Search request failed', { 
       query: q, 

@@ -124,15 +124,32 @@ async function parseResults(page, apiJson = null) {
     const products = feed.products || feed.items || [];
 
     raw = products
-      .map((p) => ({
-        product_name: p.title || p.productName || null,
-        site: 'noon.com',
-        price: Number(p.price || p.currentPrice || 0),
-        currency: (p.currency || 'SAR').toUpperCase(),
-        url: p.url || (p.sku ? `https://www.noon.com/p/${p.sku}` : null),
-        image: p.image || p.imageUrl || null,
-        raw: p
-      }))
+      .map((p) => {
+        // Extract image URL from various possible fields
+        let imageUrl = p.image || p.imageUrl || p.image_url || null;
+        
+        // If image is a relative URL, make it absolute
+        if (imageUrl && !imageUrl.startsWith('http')) {
+          if (imageUrl.startsWith('//')) {
+            imageUrl = 'https:' + imageUrl;
+          } else if (imageUrl.startsWith('/')) {
+            imageUrl = 'https://www.noon.com' + imageUrl;
+          }
+        }
+        
+        // Extract SKU for URL construction if needed
+        const sku = p.sku || p.productId || p.id;
+        
+        return {
+          product_name: p.title || p.productName || p.name || null,
+          site: 'noon.com',
+          price: Number(p.price || p.currentPrice || p.priceValue || 0),
+          currency: (p.currency || 'SAR').toUpperCase(),
+          url: p.url || (sku ? `https://www.noon.com/saudi-en/p/${sku}` : null),
+          image_url: imageUrl,
+          raw: p
+        };
+      })
       .filter((x) => x.product_name && x.price > 0);
   }
 
@@ -175,13 +192,25 @@ async function parseResults(page, apiJson = null) {
 
         if (!title || !price) continue;
 
+        // Extract image URL from DOM
+        let imageUrl = container.querySelector('img')?.src || null;
+        
+        // If image is a relative URL, make it absolute
+        if (imageUrl && !imageUrl.startsWith('http')) {
+          if (imageUrl.startsWith('//')) {
+            imageUrl = 'https:' + imageUrl;
+          } else if (imageUrl.startsWith('/')) {
+            imageUrl = 'https://www.noon.com' + imageUrl;
+          }
+        }
+        
         items.push({
           product_name: title,
           site: 'noon.com',
           price,
           currency: priceEl.innerText.includes('AED') ? 'AED' : 'SAR',
           url: href,
-          image: container.querySelector('img')?.src || null,
+          image_url: imageUrl,
           raw: { priceRaw: priceEl.innerText }
         });
       }

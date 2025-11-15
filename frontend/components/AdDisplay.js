@@ -20,14 +20,25 @@ export default function AdDisplay({ position, className = '' }) {
           ? `/api/proxy/ads?position=${encodeURIComponent(position)}`
           : '/api/proxy/ads';
         
+        console.log('[AdDisplay] Loading ads from:', url);
         const response = await fetch(url);
+        
+        if (!response.ok) {
+          console.error('[AdDisplay] HTTP error:', response.status, response.statusText);
+          return;
+        }
+        
         const data = await response.json();
+        console.log('[AdDisplay] Received data:', data);
         
         if (data.success && Array.isArray(data.ads)) {
+          console.log('[AdDisplay] Setting ads:', data.ads.length, 'ads for position:', position);
           setAds(data.ads);
+        } else {
+          console.warn('[AdDisplay] Invalid response format:', data);
         }
       } catch (err) {
-        console.error('Failed to load ads:', err);
+        console.error('[AdDisplay] Failed to load ads:', err);
       } finally {
         setLoading(false);
       }
