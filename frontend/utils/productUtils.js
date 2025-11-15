@@ -38,26 +38,30 @@ export function generateProductId(url, site) {
 
 /**
  * Get price history for a product
+ * Uses Next.js API proxy route
  */
 export async function getPriceHistory(productId, range = '30d') {
   try {
-    const response = await fetch(`http://localhost:4000/api/products/${productId}/history?range=${range}`);
+    const response = await fetch(`/api/proxy/products/${productId}/history?range=${range}`);
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     return await response.json();
   } catch (error) {
-    console.error('Failed to fetch price history:', error);
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Failed to fetch price history:', error);
+    }
     return null;
   }
 }
 
 /**
  * Create price alert
+ * Uses Next.js API proxy route
  */
 export async function createPriceAlert(productId, alertData) {
   try {
-    const response = await fetch(`http://localhost:4000/api/products/${productId}/alerts`, {
+    const response = await fetch(`/api/proxy/products/${productId}/alerts`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -70,33 +74,39 @@ export async function createPriceAlert(productId, alertData) {
     }
     return await response.json();
   } catch (error) {
-    console.error('Failed to create price alert:', error);
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Failed to create price alert:', error);
+    }
     throw error;
   }
 }
 
 /**
  * Get user alerts
+ * Uses Next.js API proxy route
  */
 export async function getUserAlerts(userId) {
   try {
-    const response = await fetch(`http://localhost:4000/api/users/${userId}/alerts`);
+    const response = await fetch(`/api/proxy/users/${userId}/alerts`);
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     return await response.json();
   } catch (error) {
-    console.error('Failed to fetch user alerts:', error);
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Failed to fetch user alerts:', error);
+    }
     return { alerts: [] };
   }
 }
 
 /**
  * Delete price alert
+ * Uses Next.js API proxy route
  */
 export async function deletePriceAlert(productId, alertId) {
   try {
-    const response = await fetch(`http://localhost:4000/api/products/${productId}/alerts/${alertId}`, {
+    const response = await fetch(`/api/proxy/products/${productId}/alerts/${alertId}`, {
       method: 'DELETE',
     });
     if (!response.ok) {
@@ -104,30 +114,27 @@ export async function deletePriceAlert(productId, alertId) {
     }
     return await response.json();
   } catch (error) {
-    console.error('Failed to delete alert:', error);
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Failed to delete alert:', error);
+    }
     throw error;
   }
 }
 
 /**
  * Generate affiliate token and get redirect URL
+ * REMOVED: Affiliate URLs are now generated server-side in API proxy routes
+ * This function has been removed to prevent browser-to-backend calls
+ * Products should include affiliate_url field from server-side generation
+ * 
+ * If you need affiliate URLs, they are generated server-side in:
+ * - /api/proxy/search.js
+ * - /api/proxy/search-stream.js
+ * 
+ * Products returned from search will have affiliate_url field already set
  */
-export async function getAffiliateUrl(productData) {
-  try {
-    const response = await fetch('http://localhost:4000/api/affiliate/token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(productData),
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const data = await response.json();
-    return `http://localhost:4000${data.redirectUrl}`;
-  } catch (error) {
-    console.error('Failed to generate affiliate URL:', error);
-    return productData.url || '#';
-  }
+export function getAffiliateUrl(productData) {
+  // Return affiliate_url if available (from server-side generation), otherwise original URL
+  // This is a synchronous function that doesn't make any network calls
+  return productData.affiliate_url || productData.url || '#';
 }

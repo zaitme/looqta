@@ -1,7 +1,9 @@
 /**
  * Proxy API route: forwards streaming search to backend
- * Note: Next.js API routes don't support streaming well, so we'll use a workaround
+ * Processes SSE events and adds affiliate URLs server-side
  */
+import { generateAffiliateUrlServerSide } from '../../../utils/serverProductUtils';
+
 export default async function handler(req, res) {
   // Disable body parsing for streaming
   if (req.method !== 'GET') {
@@ -16,8 +18,20 @@ export default async function handler(req, res) {
   const forceFresh = req.query.forceFresh === 'true' || req.query.fresh === 'true';
   const freshParam = forceFresh ? '&forceFresh=true' : '';
   
-  // Use relative URL for proxy support, fallback to env var or localhost
-  const backend = process.env.BACKEND_URL || 'http://localhost:4000';
+  // Use BACKEND_URL from environment or construct from request hostname
+  let backend;
+  try {
+    if (process.env.BACKEND_URL) {
+      backend = process.env.BACKEND_URL;
+    } else {
+      const host = req.headers.host || 'localhost:3000';
+      const hostname = host.split(':')[0] || 'localhost';
+      backend = `http://${hostname}:4000`;
+    }
+  } catch (backendError) {
+    console.error('[Proxy Search Stream] Error determining backend URL:', backendError);
+    return res.status(500).json({ error: 'Backend configuration error' });
+  }
   const backendUrl = backend ? `${backend}/api/search/stream` : '/api/search/stream';
   
   try {
@@ -54,21 +68,107 @@ export default async function handler(req, res) {
       return;
     }
     
-    // Pipe the backend response to the client
+    // Process SSE stream and add affiliate URLs to results events
     const reader = backendRes.body.getReader();
     const decoder = new TextDecoder();
+    let buffer = '';
+    let currentEvent = null;
+    let currentData = null;
     
     try {
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         
-        const chunk = decoder.decode(value, { stream: true });
-        res.write(chunk);
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+        
+        for (const line of lines) {
+          if (line.trim() === '') {
+            // Empty line indicates end of SSE event
+            if (currentEvent && currentData) {
+              // Process results events to add affiliate URLs
+              if (currentEvent === 'results' && currentData.data && Array.isArray(currentData.data)) {
+                const products = currentData.data;
+                if (products.length > 0) {
+                  // Generate affiliate URLs for products in parallel
+                  const affiliatePromises = products.map(async (product) => {
+                    if (!product.url || !product.site) {
+                      return { ...product, affiliate_url: product.url };
+                    }
+                    
+                    const affiliateUrl = await generateAffiliateUrlServerSide({
+                      url: product.url,
+                      site: product.site,
+                      productId: product.product_id || product.productId,
+                      productName: product.product_name || product.name,
+                      affiliateUrl: product.affiliate_url || product.url
+                    }, backend);
+                    
+                    return {
+                      ...product,
+                      affiliate_url: affiliateUrl || product.url
+                    };
+                  });
+                  
+                  const updatedProducts = await Promise.all(affiliatePromises);
+                  currentData.data = updatedProducts;
+                  
+                  // Write updated event
+                  res.write(`event: ${currentEvent}\n`);
+                  res.write(`data: ${JSON.stringify(currentData)}\n\n`);
+                } else {
+                  // No products, forward as-is
+                  res.write(`event: ${currentEvent}\n`);
+                  res.write(`data: ${JSON.stringify(currentData)}\n\n`);
+                }
+              } else {
+                // For non-results events, forward as-is
+                res.write(`event: ${currentEvent}\n`);
+                res.write(`data: ${JSON.stringify(currentData)}\n\n`);
+              }
+              
+              // Reset for next event
+              currentEvent = null;
+              currentData = null;
+            }
+            continue;
+          }
+          
+          // Parse SSE lines
+          if (line.startsWith('event: ')) {
+            currentEvent = line.substring(7).trim();
+          } else if (line.startsWith('data: ')) {
+            try {
+              const dataStr = line.substring(6); // Remove 'data: ' prefix
+              currentData = JSON.parse(dataStr);
+            } catch (parseError) {
+              // If parsing fails, forward the line as-is
+              res.write(line + '\n');
+              currentData = null;
+            }
+          } else {
+            // Unknown line format, forward as-is
+            res.write(line + '\n');
+          }
+        }
+        
         // Flush to send immediately
         if (typeof res.flush === 'function') {
           res.flush();
         }
+      }
+      
+      // Handle any remaining event in buffer
+      if (currentEvent && currentData) {
+        res.write(`event: ${currentEvent}\n`);
+        res.write(`data: ${JSON.stringify(currentData)}\n\n`);
+      }
+      
+      // Write any remaining buffer
+      if (buffer.trim()) {
+        res.write(buffer);
       }
     } finally {
       reader.releaseLock();

@@ -39,7 +39,8 @@ A modern price comparison platform for the Gulf region, comparing products from 
 - **Modern UI**: High-fidelity design with real-time loading indicators
 - **Product Images**: Display product images from all sources
 - **Site Badges**: Clear indication of product source
-- **ROAR Admin Dashboard**: Complete admin system for managing ads, users, and system settings
+- **ROAR Admin Dashboard**: Complete admin system for managing ads, users, system settings, and affiliate analytics
+- **Affiliate Link Tracking**: Complete affiliate link click tracking and analytics dashboard
 - **Google AdSense Support**: Display Google AdSense ads with proper dimensions
 - **SEO Optimization**: Comprehensive SEO with Open Graph, Twitter Cards, and structured data
 - **WhatsApp Sharing**: Share products via WhatsApp with formatted messages
@@ -451,11 +452,33 @@ Results are cached in Redis with:
 ### Features
 
 - **Dashboard**: System statistics and overview
+- **Affiliate Analytics**: Track affiliate link clicks, top products, clicks by site, and recent activity
 - **Ad Management**: Create, edit, delete ad placements with Google AdSense support
 - **User Management**: Manage admin users
 - **System Settings**: Configure system parameters
 - **Audit Logs**: Track all admin actions
 - **Cache Management**: View and manage Redis cache keys
+
+### Affiliate Analytics
+
+The ROAR dashboard includes comprehensive affiliate link analytics:
+
+**Features:**
+- **Summary Statistics**: Total clicks, today's clicks, weekly and monthly totals
+- **Clicks by Site**: Breakdown of clicks by retailer (Amazon, Noon, etc.)
+- **Top Products**: Most clicked products with click counts and timestamps
+- **Recent Clicks**: Real-time feed of recent affiliate link clicks with IP addresses
+- **Time Filters**: Filter analytics by 7, 30, or 90 days
+
+**Access:**
+Navigate to the "Affiliate Analytics" tab in the ROAR dashboard to view all affiliate link metrics.
+
+**Data Tracked:**
+- Product ID and name
+- Retailer site (Amazon, Noon, etc.)
+- Click timestamp
+- IP address and user agent
+- Affiliate URL and original product URL
 
 ### Proxy Setup
 
@@ -928,6 +951,7 @@ After recovering to commit `bf1134f` and cherry-picking only the WhatsApp/SEO co
 - ✅ Google AdSense ad support
 - ✅ SEO optimization
 - ✅ WhatsApp sharing
+- ✅ Affiliate link tracking and analytics
 
 ### Performance
 

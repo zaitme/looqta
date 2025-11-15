@@ -1,7 +1,7 @@
 'use client';
 import SellerBadge from './SellerBadge';
 import WhatsAppShare from './WhatsAppShare';
-import { generateProductId, getAffiliateUrl } from '../utils/productUtils';
+import { generateProductId } from '../utils/productUtils';
 import { useState, useEffect } from 'react';
 
 // Helper function to extract image URL from product URL
@@ -54,21 +54,9 @@ function getImageFromUrl(url) {
 }
 
 export default function ResultCard({ r, index, isBestDeal, isSecondDeal, isThirdDeal, dealRank }){
-  const [affiliateUrl, setAffiliateUrl] = useState(r.url);
+  // Use affiliate_url from server-side generation, fallback to original URL
+  const affiliateUrl = r.affiliate_url || r.url;
   const productId = generateProductId(r.url, r.site);
-
-  useEffect(() => {
-    // Generate affiliate URL if available
-    if (r.url && r.site) {
-      getAffiliateUrl({
-        url: r.url,
-        site: r.site,
-        productId: productId,
-        productName: r.product_name,
-        affiliateUrl: r.affiliate_url || r.url
-      }).then(url => setAffiliateUrl(url));
-    }
-  }, [r.url, r.site, productId]);
   const siteConfig = {
     'amazon.sa': {
       name: 'Amazon SA',

@@ -1657,7 +1657,12 @@ router.get('/stats', requireAuth, async (req, res) => {
       priceHistoryEntries: 0,
       activeAlerts: 0,
       totalScrapers: 5,
-      enabledScrapers: 0
+      enabledScrapers: 0,
+      affiliateClicks: 0,
+      affiliateClicksToday: 0,
+      affiliateClicksThisWeek: 0,
+      affiliateClicksThisMonth: 0,
+      uniqueAffiliateProducts: 0
     };
     
     if (dbAvailable) {
@@ -1668,6 +1673,21 @@ router.get('/stats', requireAuth, async (req, res) => {
         const [priceHistoryCount] = await db.execute(`SELECT COUNT(*) as count FROM price_history`);
         const [alertCount] = await db.execute(`SELECT COUNT(*) as count FROM user_price_alerts WHERE is_active = TRUE`);
         
+        // Affiliate click statistics
+        const [affiliateClicksTotal] = await db.execute(`SELECT COUNT(*) as count FROM affiliate_clicks`);
+        const [affiliateClicksToday] = await db.execute(
+          `SELECT COUNT(*) as count FROM affiliate_clicks WHERE DATE(clicked_at) = CURDATE()`
+        );
+        const [affiliateClicksThisWeek] = await db.execute(
+          `SELECT COUNT(*) as count FROM affiliate_clicks WHERE clicked_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)`
+        );
+        const [affiliateClicksThisMonth] = await db.execute(
+          `SELECT COUNT(*) as count FROM affiliate_clicks WHERE clicked_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)`
+        );
+        const [uniqueProducts] = await db.execute(
+          `SELECT COUNT(DISTINCT product_id) as count FROM affiliate_clicks WHERE product_id IS NOT NULL`
+        );
+        
         stats = {
           users: userCount[0]?.count || 0,
           apiTokens: tokenCount[0]?.count || 0,
@@ -1675,7 +1695,12 @@ router.get('/stats', requireAuth, async (req, res) => {
           priceHistoryEntries: priceHistoryCount[0]?.count || 0,
           activeAlerts: alertCount[0]?.count || 0,
           totalScrapers: 5,
-          enabledScrapers: 0
+          enabledScrapers: 0,
+          affiliateClicks: affiliateClicksTotal[0]?.count || 0,
+          affiliateClicksToday: affiliateClicksToday[0]?.count || 0,
+          affiliateClicksThisWeek: affiliateClicksThisWeek[0]?.count || 0,
+          affiliateClicksThisMonth: affiliateClicksThisMonth[0]?.count || 0,
+          uniqueAffiliateProducts: uniqueProducts[0]?.count || 0
         };
       } catch (dbError) {
         logger.warn('Failed to fetch some stats from database', { error: dbError.message });
@@ -1693,6 +1718,116 @@ router.get('/stats', requireAuth, async (req, res) => {
     });
   } catch (error) {
     logger.error('Failed to get stats', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /roar/affiliate/analytics
+ * Get detailed affiliate analytics
+ */
+router.get('/affiliate/analytics', requireAuth, async (req, res) => {
+  try {
+    // Check database connection
+    try {
+      await db.execute('SELECT 1');
+    } catch (dbError) {
+      logger.error('Database unavailable for affiliate analytics', { error: dbError.message });
+      return res.status(503).json({ success: false, error: 'Service temporarily unavailable' });
+    }
+    
+    const limit = parseInt(req.query.limit) || 50;
+    const offset = parseInt(req.query.offset) || 0;
+    const days = parseInt(req.query.days) || 30;
+    
+    // Overall statistics
+    const [totalClicks] = await db.execute(`SELECT COUNT(*) as count FROM affiliate_clicks`);
+    const [clicksByDay] = await db.execute(
+      `SELECT DATE(clicked_at) as date, COUNT(*) as clicks
+       FROM affiliate_clicks
+       WHERE clicked_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+       GROUP BY DATE(clicked_at)
+       ORDER BY date DESC
+       LIMIT 30`,
+      [days]
+    );
+    
+    // Top products by clicks
+    const [topProducts] = await db.execute(
+      `SELECT 
+         product_id,
+         product_name,
+         site,
+         COUNT(*) as click_count,
+         MIN(clicked_at) as first_click,
+         MAX(clicked_at) as last_click
+       FROM affiliate_clicks
+       WHERE product_id IS NOT NULL
+       GROUP BY product_id, product_name, site
+       ORDER BY click_count DESC
+       LIMIT ?`,
+      [limit]
+    );
+    
+    // Clicks by site
+    const [clicksBySite] = await db.execute(
+      `SELECT 
+         site,
+         COUNT(*) as click_count,
+         COUNT(DISTINCT product_id) as unique_products
+       FROM affiliate_clicks
+       WHERE site IS NOT NULL
+       GROUP BY site
+       ORDER BY click_count DESC`
+    );
+    
+    // Recent clicks
+    const [recentClicks] = await db.execute(
+      `SELECT 
+         id,
+         product_id,
+         product_name,
+         site,
+         url,
+         affiliate_url,
+         ip_address,
+         user_agent,
+         clicked_at
+       FROM affiliate_clicks
+       ORDER BY clicked_at DESC
+       LIMIT ? OFFSET ?`,
+      [limit, offset]
+    );
+    
+    // Time-based statistics
+    const [todayClicks] = await db.execute(
+      `SELECT COUNT(*) as count FROM affiliate_clicks WHERE DATE(clicked_at) = CURDATE()`
+    );
+    const [weekClicks] = await db.execute(
+      `SELECT COUNT(*) as count FROM affiliate_clicks WHERE clicked_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)`
+    );
+    const [monthClicks] = await db.execute(
+      `SELECT COUNT(*) as count FROM affiliate_clicks WHERE clicked_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)`
+    );
+    
+    res.json({
+      success: true,
+      analytics: {
+        summary: {
+          totalClicks: totalClicks[0]?.count || 0,
+          todayClicks: todayClicks[0]?.count || 0,
+          weekClicks: weekClicks[0]?.count || 0,
+          monthClicks: monthClicks[0]?.count || 0,
+          uniqueProducts: topProducts.length
+        },
+        clicksByDay: clicksByDay,
+        topProducts: topProducts,
+        clicksBySite: clicksBySite,
+        recentClicks: recentClicks
+      }
+    });
+  } catch (error) {
+    logger.error('Failed to get affiliate analytics', { error: error.message });
     res.status(500).json({ success: false, error: error.message });
   }
 });

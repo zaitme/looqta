@@ -117,6 +117,7 @@ export default function RoarAdmin() {
       
       <AdminLayout user={user} activeTab={activeTab} setActiveTab={setActiveTab} onLogout={checkAuth}>
         {activeTab === 'dashboard' && <Dashboard />}
+        {activeTab === 'affiliate' && <AffiliateAnalytics />}
         {activeTab === 'users' && <UserManagement />}
         {activeTab === 'tokens' && <TokenManagement />}
         {activeTab === 'ads' && <AdManagement />}
@@ -279,6 +280,7 @@ function AdminLayout({ user, activeTab, setActiveTab, onLogout, children }) {
 
   const tabs = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+    { id: 'affiliate', label: 'Affiliate Analytics', icon: '🔗' },
     { id: 'users', label: 'Users', icon: '👥' },
     { id: 'tokens', label: 'API Tokens', icon: '🔑' },
     { id: 'ads', label: 'Ad Placements', icon: '📢' },
@@ -437,6 +439,232 @@ function Dashboard() {
         <div className="text-center py-16">
           <div className="bg-white/70 backdrop-blur-xl rounded-2xl border border-gray-200/50 p-8 max-w-md mx-auto shadow-lg">
             <p className="text-gray-600 font-semibold">No statistics available</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Affiliate Analytics Component
+ * Displays affiliate link click statistics and analytics
+ * 
+ * @component
+ */
+function AffiliateAnalytics() {
+  const [analytics, setAnalytics] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [daysFilter, setDaysFilter] = useState(30);
+
+  useEffect(() => {
+    fetchAnalytics();
+  }, [daysFilter]);
+
+  const fetchAnalytics = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await fetch(`${API_BASE}/affiliate/analytics?days=${daysFilter}`, {
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      const data = await response.json();
+      if (data.success) {
+        setAnalytics(data.analytics);
+      } else {
+        setError(data.error || 'Failed to load affiliate analytics');
+      }
+    } catch (err) {
+      console.error('Failed to fetch affiliate analytics:', err);
+      setError('Failed to load affiliate analytics');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="text-center py-16">
+        <div className="relative mb-6 mx-auto w-16 h-16">
+          <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-10 h-10 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin [animation-direction:reverse] [animation-duration:0.8s]"></div>
+          </div>
+        </div>
+        <p className="text-gray-600 font-semibold">Loading affiliate analytics...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-16">
+        <div className="bg-white/70 backdrop-blur-xl rounded-2xl border-2 border-red-200 p-8 max-w-md mx-auto shadow-lg">
+          <p className="text-red-600 font-bold">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!analytics) {
+    return (
+      <div className="text-center py-16">
+        <div className="bg-white/70 backdrop-blur-xl rounded-2xl border border-gray-200/50 p-8 max-w-md mx-auto shadow-lg">
+          <p className="text-gray-600 font-semibold">No affiliate analytics available</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h2 className="text-4xl lg:text-5xl font-black bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent mb-2">
+            Affiliate Analytics
+          </h2>
+          <p className="text-gray-600 font-semibold">Track affiliate link clicks and performance</p>
+        </div>
+        <select
+          value={daysFilter}
+          onChange={(e) => setDaysFilter(parseInt(e.target.value))}
+          className="px-4 py-2 rounded-xl border border-gray-300 bg-white/70 backdrop-blur-xl font-semibold"
+        >
+          <option value={7}>Last 7 days</option>
+          <option value={30}>Last 30 days</option>
+          <option value={90}>Last 90 days</option>
+        </select>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6 mb-8">
+        <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-200/50">
+          <p className="text-sm text-gray-600 mb-3 font-semibold uppercase tracking-wide">Total Clicks</p>
+          <p className="text-3xl lg:text-4xl font-black bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 bg-clip-text text-transparent">
+            {analytics.summary.totalClicks.toLocaleString()}
+          </p>
+        </div>
+        <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-200/50">
+          <p className="text-sm text-gray-600 mb-3 font-semibold uppercase tracking-wide">Today</p>
+          <p className="text-3xl lg:text-4xl font-black bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+            {analytics.summary.todayClicks.toLocaleString()}
+          </p>
+        </div>
+        <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-200/50">
+          <p className="text-sm text-gray-600 mb-3 font-semibold uppercase tracking-wide">This Week</p>
+          <p className="text-3xl lg:text-4xl font-black bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent">
+            {analytics.summary.weekClicks.toLocaleString()}
+          </p>
+        </div>
+        <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-200/50">
+          <p className="text-sm text-gray-600 mb-3 font-semibold uppercase tracking-wide">This Month</p>
+          <p className="text-3xl lg:text-4xl font-black bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+            {analytics.summary.monthClicks.toLocaleString()}
+          </p>
+        </div>
+      </div>
+
+      {/* Clicks by Site */}
+      {analytics.clicksBySite && analytics.clicksBySite.length > 0 && (
+        <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-200/50 mb-8">
+          <h3 className="text-2xl font-black text-gray-800 mb-4">Clicks by Site</h3>
+          <div className="space-y-3">
+            {analytics.clicksBySite.map((site, index) => (
+              <div key={index} className="flex items-center justify-between p-4 bg-gradient-to-r from-indigo-50/50 to-purple-50/50 rounded-xl">
+                <div>
+                  <p className="font-bold text-gray-800 capitalize">{site.site || 'Unknown'}</p>
+                  <p className="text-sm text-gray-600">{site.unique_products} unique products</p>
+                </div>
+                <p className="text-2xl font-black bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                  {site.click_count.toLocaleString()}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Top Products */}
+      {analytics.topProducts && analytics.topProducts.length > 0 && (
+        <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-200/50 mb-8">
+          <h3 className="text-2xl font-black text-gray-800 mb-4">Top Products by Clicks</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left p-3 font-bold text-gray-700">Product</th>
+                  <th className="text-left p-3 font-bold text-gray-700">Site</th>
+                  <th className="text-right p-3 font-bold text-gray-700">Clicks</th>
+                  <th className="text-left p-3 font-bold text-gray-700">Last Click</th>
+                </tr>
+              </thead>
+              <tbody>
+                {analytics.topProducts.map((product, index) => (
+                  <tr key={index} className="border-b border-gray-100 hover:bg-indigo-50/30 transition-colors">
+                    <td className="p-3">
+                      <p className="font-semibold text-gray-800">{product.product_name || 'Unknown Product'}</p>
+                      <p className="text-xs text-gray-500 font-mono">{product.product_id}</p>
+                    </td>
+                    <td className="p-3">
+                      <span className="px-3 py-1 bg-gradient-to-r from-indigo-100 to-purple-100 rounded-full text-sm font-bold text-gray-700 capitalize">
+                        {product.site || 'Unknown'}
+                      </span>
+                    </td>
+                    <td className="p-3 text-right">
+                      <span className="text-xl font-black bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
+                        {product.click_count.toLocaleString()}
+                      </span>
+                    </td>
+                    <td className="p-3 text-sm text-gray-600">
+                      {product.last_click ? new Date(product.last_click).toLocaleDateString() : 'N/A'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Recent Clicks */}
+      {analytics.recentClicks && analytics.recentClicks.length > 0 && (
+        <div className="bg-white/70 backdrop-blur-xl rounded-2xl shadow-lg p-6 border border-gray-200/50">
+          <h3 className="text-2xl font-black text-gray-800 mb-4">Recent Clicks</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left p-3 font-bold text-gray-700">Product</th>
+                  <th className="text-left p-3 font-bold text-gray-700">Site</th>
+                  <th className="text-left p-3 font-bold text-gray-700">Time</th>
+                  <th className="text-left p-3 font-bold text-gray-700">IP Address</th>
+                </tr>
+              </thead>
+              <tbody>
+                {analytics.recentClicks.map((click, index) => (
+                  <tr key={index} className="border-b border-gray-100 hover:bg-indigo-50/30 transition-colors">
+                    <td className="p-3">
+                      <p className="font-semibold text-gray-800">{click.product_name || 'Unknown Product'}</p>
+                    </td>
+                    <td className="p-3">
+                      <span className="px-3 py-1 bg-gradient-to-r from-indigo-100 to-purple-100 rounded-full text-sm font-bold text-gray-700 capitalize">
+                        {click.site || 'Unknown'}
+                      </span>
+                    </td>
+                    <td className="p-3 text-sm text-gray-600">
+                      {click.clicked_at ? new Date(click.clicked_at).toLocaleString() : 'N/A'}
+                    </td>
+                    <td className="p-3 text-sm text-gray-500 font-mono">
+                      {click.ip_address || 'N/A'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

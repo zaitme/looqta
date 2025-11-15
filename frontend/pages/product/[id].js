@@ -6,7 +6,7 @@ import PriceHistoryChart from '../../components/PriceHistoryChart';
 import PriceAlertForm from '../../components/PriceAlertForm';
 import SellerBadge from '../../components/SellerBadge';
 import WhatsAppShare from '../../components/WhatsAppShare';
-import { generateProductId, getAffiliateUrl } from '../../utils/productUtils';
+import { generateProductId } from '../../utils/productUtils';
 
 /**
  * Product Detail Page
@@ -23,37 +23,90 @@ export default function ProductDetailPage() {
   useEffect(() => {
     if (!id) return;
 
-    // In a real app, you'd fetch product by ID from API
-    // For now, we'll extract from URL or use localStorage
-    const storedProduct = localStorage.getItem(`product_${id}`);
-    if (storedProduct) {
+    const fetchProduct = async () => {
       try {
-        const productData = JSON.parse(storedProduct);
-        setProduct(productData);
+        setLoading(true);
         
-        // Generate product ID if not present
-        if (!productData.productId && productData.url && productData.site) {
-          productData.productId = generateProductId(productData.url, productData.site);
-        }
+        // Try to fetch from API first
+        const response = await fetch(`/api/proxy/products/${id}`);
+        
+        if (response.ok) {
+          const productData = await response.json();
+          setProduct(productData);
+          
+          // Generate product ID if not present
+          if (!productData.productId && productData.url && productData.site) {
+            productData.productId = generateProductId(productData.url, productData.site);
+          } else if (productData.product_id) {
+            productData.productId = productData.product_id;
+          }
 
-        // Get affiliate URL
-        if (productData.url && productData.site) {
-          getAffiliateUrl({
-            url: productData.url,
-            site: productData.site,
-            productId: productData.productId || generateProductId(productData.url, productData.site),
-            productName: productData.product_name,
-            affiliateUrl: productData.affiliate_url || productData.url
-          }).then(url => setAffiliateUrl(url));
+          // Use affiliate URL from product data (generated server-side)
+          if (productData.affiliate_url) {
+            setAffiliateUrl(productData.affiliate_url);
+          } else if (productData.url) {
+            setAffiliateUrl(productData.url);
+          }
+        } else if (response.status === 404) {
+          // Product not found in database, try localStorage as fallback
+          const storedProduct = localStorage.getItem(`product_${id}`);
+          if (storedProduct) {
+            try {
+              const productData = JSON.parse(storedProduct);
+              setProduct(productData);
+              
+              // Generate product ID if not present
+              if (!productData.productId && productData.url && productData.site) {
+                productData.productId = generateProductId(productData.url, productData.site);
+              }
+
+              // Use affiliate URL from product data (generated server-side)
+              if (productData.affiliate_url) {
+                setAffiliateUrl(productData.affiliate_url);
+              } else if (productData.url) {
+                setAffiliateUrl(productData.url);
+              }
+            } catch (e) {
+              console.error('Failed to parse product data:', e);
+              setError('Product not found');
+            }
+          } else {
+            setError('Product not found');
+          }
+        } else {
+          setError('Failed to load product');
         }
       } catch (e) {
-        console.error('Failed to parse product data:', e);
-        setError('Failed to load product');
+        console.error('Failed to fetch product:', e);
+        // Try localStorage as fallback
+        const storedProduct = localStorage.getItem(`product_${id}`);
+        if (storedProduct) {
+          try {
+            const productData = JSON.parse(storedProduct);
+            setProduct(productData);
+            
+            if (!productData.productId && productData.url && productData.site) {
+              productData.productId = generateProductId(productData.url, productData.site);
+            }
+
+            if (productData.affiliate_url) {
+              setAffiliateUrl(productData.affiliate_url);
+            } else if (productData.url) {
+              setAffiliateUrl(productData.url);
+            }
+          } catch (parseError) {
+            console.error('Failed to parse product data:', parseError);
+            setError('Failed to load product');
+          }
+        } else {
+          setError('Failed to load product');
+        }
+      } finally {
+        setLoading(false);
       }
-    } else {
-      setError('Product not found');
-    }
-    setLoading(false);
+    };
+
+    fetchProduct();
   }, [id]);
 
   if (loading) {
@@ -100,6 +153,11 @@ export default function ProductDetailPage() {
         {/* SEO Meta Tags */}
         <title>{product.product_name} - Looqta Price Comparison</title>
         <meta name="description" content={`Best price: ${product.price || 'N/A'} ${product.currency || 'SAR'} on ${product.site || 'Looqta'}. Compare prices from Amazon and Noon.`} />
+        <meta name="keywords" content={`${product.product_name}, price comparison, ${product.site || 'Looqta'}, Amazon, Noon, Saudi Arabia, online shopping, best deals, compare prices, لقطة`} />
+        <meta name="author" content="Looqta" />
+        <meta name="language" content="English, Arabic" />
+        <meta name="geo.region" content="SA" />
+        <meta name="geo.placename" content="Saudi Arabia" />
         
         {/* Open Graph Meta Tags */}
         <meta property="og:title" content={`${product.product_name} - Looqta`} />
@@ -108,6 +166,8 @@ export default function ProductDetailPage() {
         <meta property="og:url" content={productUrl} />
         <meta property="og:type" content="product" />
         <meta property="og:site_name" content="Looqta" />
+        <meta property="og:locale" content="en_US" />
+        <meta property="og:locale:alternate" content="ar_SA" />
         
         {/* Product-specific Open Graph tags */}
         <meta property="product:price:amount" content={product.price || '0'} />
@@ -125,34 +185,55 @@ export default function ProductDetailPage() {
         {/* WhatsApp Meta Tags */}
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
+        <meta property="og:image:type" content="image/jpeg" />
+        
+        {/* Canonical URL */}
+        <link rel="canonical" href={productUrl} />
+        
+        {/* Additional SEO */}
+        <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+        <meta name="googlebot" content="index, follow" />
+        <meta name="bingbot" content="index, follow" />
         
         {/* Structured Data */}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
-            __html: JSON.stringify({
-              "@context": "https://schema.org",
-              "@type": "Product",
-              "name": product.product_name,
-              "image": productImage,
-              "description": `Best price: ${product.price || 'N/A'} ${product.currency || 'SAR'} on ${product.site || 'Looqta'}`,
-              "brand": {
-                "@type": "Brand",
-                "name": product.site || "Looqta"
-              },
-              "offers": {
-                "@type": "Offer",
-                "url": product.url || productUrl,
-                "priceCurrency": product.currency || "SAR",
-                "price": product.price || "0",
-                "priceValidUntil": new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-                "availability": "https://schema.org/InStock",
-                "seller": {
-                  "@type": "Organization",
+            __html: JSON.stringify((() => {
+              const structuredData = {
+                "@context": "https://schema.org",
+                "@type": "Product",
+                "name": product.product_name,
+                "image": productImage,
+                "description": `Best price: ${product.price || 'N/A'} ${product.currency || 'SAR'} on ${product.site || 'Looqta'}`,
+                "brand": {
+                  "@type": "Brand",
                   "name": product.site || "Looqta"
+                },
+                "offers": {
+                  "@type": "Offer",
+                  "url": product.url || productUrl,
+                  "priceCurrency": product.currency || "SAR",
+                  "price": product.price || "0",
+                  "priceValidUntil": new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+                  "availability": "https://schema.org/InStock",
+                  "seller": {
+                    "@type": "Organization",
+                    "name": product.site || "Looqta"
+                  }
                 }
+              };
+              
+              if (product.seller_rating) {
+                structuredData.aggregateRating = {
+                  "@type": "AggregateRating",
+                  "ratingValue": product.seller_rating,
+                  "reviewCount": product.seller_rating_count || 0
+                };
               }
-            })
+              
+              return structuredData;
+            })())
           }}
         />
       </Head>

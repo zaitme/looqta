@@ -37,7 +37,7 @@ export default async function handler(req, res) {
       }
     } catch (backendError) {
       console.error('[Proxy ROAR] Error determining backend URL:', backendError);
-      backend = 'http://localhost:4000'; // Fallback
+      return res.status(500).json({ success: false, error: 'Backend configuration error' });
     }
     
     const backendUrl = `${backend}/roar${roarPath}`;

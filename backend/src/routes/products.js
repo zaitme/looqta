@@ -178,4 +178,117 @@ router.delete('/:id/alerts/:alertId', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/products/:id
+ * Get product details by product_id (hash)
+ */
+router.get('/:id', async (req, res) => {
+  try {
+    const productId = req.params.id;
+    
+    // Check database connection
+    try {
+      await db.execute('SELECT 1');
+    } catch (dbError) {
+      logger.error('Database unavailable for product fetch', { error: dbError.message });
+      return res.status(503).json({ 
+        error: 'Service temporarily unavailable',
+        message: 'Database connection unavailable'
+      });
+    }
+    
+    // Try to get product from products table
+    const [productRows] = await db.execute(
+      `SELECT 
+        product_id,
+        name as product_name,
+        price,
+        currency,
+        url,
+        image_url as image,
+        affiliate_url,
+        seller_rating,
+        seller_rating_count,
+        seller_type,
+        site,
+        site_product_id,
+        source_sku,
+        shipping_info,
+        updated_at
+      FROM products
+      WHERE product_id = ?
+      LIMIT 1`,
+      [productId]
+    );
+    
+    if (productRows.length > 0) {
+      const product = productRows[0];
+      // Parse shipping_info if it's a JSON string
+      if (product.shipping_info && typeof product.shipping_info === 'string') {
+        try {
+          product.shipping_info = JSON.parse(product.shipping_info);
+        } catch (e) {
+          // Keep as string if parsing fails
+        }
+      }
+      
+      // Get latest price from price_history if available
+      const [priceRows] = await db.execute(
+        `SELECT price, currency, scraped_at
+         FROM price_history
+         WHERE product_id = ?
+         ORDER BY scraped_at DESC
+         LIMIT 1`,
+        [productId]
+      );
+      
+      if (priceRows.length > 0 && priceRows[0].price) {
+        product.price = parseFloat(priceRows[0].price);
+        product.currency = priceRows[0].currency || product.currency;
+      }
+      
+      return res.json(product);
+    }
+    
+    // If not found in products table, try to get from price_history
+    const [historyRows] = await db.execute(
+      `SELECT DISTINCT 
+        product_id,
+        site,
+        url,
+        price,
+        currency,
+        scraped_at
+      FROM price_history
+      WHERE product_id = ?
+      ORDER BY scraped_at DESC
+      LIMIT 1`,
+      [productId]
+    );
+    
+    if (historyRows.length > 0) {
+      const history = historyRows[0];
+      return res.json({
+        product_id: history.product_id,
+        site: history.site,
+        url: history.url,
+        price: parseFloat(history.price),
+        currency: history.currency,
+        product_name: null, // Not available from price_history
+        image: null,
+        updated_at: history.scraped_at
+      });
+    }
+    
+    // Product not found
+    res.status(404).json({ 
+      error: 'Product not found',
+      productId 
+    });
+  } catch (error) {
+    logger.error('Failed to get product', { error: error.message, stack: error.stack });
+    res.status(500).json({ error: 'Failed to retrieve product' });
+  }
+});
+
 module.exports = router;

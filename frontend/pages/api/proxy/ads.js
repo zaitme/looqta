@@ -32,7 +32,7 @@ export default async function handler(req, res) {
     }
   } catch (backendError) {
     console.error('[Proxy Ads] Error determining backend URL:', backendError);
-    backend = 'http://localhost:4000'; // Fallback
+    return res.status(500).json({ success: false, ads: [], error: 'Backend configuration error' });
   }
   
   // Build query string from request query params

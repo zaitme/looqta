@@ -93,9 +93,15 @@ export default function Page(){
         {/* WhatsApp Meta Tags */}
         <meta property="og:image:width" content="1200" />
         <meta property="og:image:height" content="630" />
+        <meta property="og:image:type" content="image/jpeg" />
         
         {/* Canonical URL */}
         <link rel="canonical" href={siteUrl} />
+        
+        {/* Additional SEO */}
+        <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+        <meta name="googlebot" content="index, follow" />
+        <meta name="bingbot" content="index, follow" />
         
         {/* Structured Data */}
         <script

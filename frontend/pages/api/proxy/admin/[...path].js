@@ -10,8 +10,20 @@ export default async function handler(req, res) {
     ? (Array.isArray(path) ? '/' + path.join('/') : '/' + path)
     : '';
   
-  // Use relative URL for proxy support, fallback to env var or localhost
-  const backend = process.env.BACKEND_URL || (typeof window === 'undefined' ? 'http://localhost:4000' : '');
+  // Use BACKEND_URL from environment or construct from request hostname
+  let backend;
+  try {
+    if (process.env.BACKEND_URL) {
+      backend = process.env.BACKEND_URL;
+    } else {
+      const host = req.headers.host || 'localhost:3000';
+      const hostname = host.split(':')[0] || 'localhost';
+      backend = `http://${hostname}:4000`;
+    }
+  } catch (backendError) {
+    console.error('[Proxy Admin] Error determining backend URL:', backendError);
+    return res.status(500).json({ success: false, error: 'Backend configuration error' });
+  }
   const backendUrl = backend ? `${backend}/api/admin${adminPath}` : `/api/admin${adminPath}`;
   
   try {
