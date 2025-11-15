@@ -1435,14 +1435,18 @@ function AdForm({ ad, onClose, onSuccess }) {
             
             <div>
               <label className="block text-sm font-bold text-gray-700 mb-2">Position *</label>
-              <input
-                type="text"
+              <select
                 value={formData.position}
                 onChange={(e) => setFormData({...formData, position: e.target.value})}
                 className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm"
                 required
-                placeholder="e.g., header, sidebar, footer"
-              />
+              >
+                <option value="">Select position...</option>
+                <option value="header">Header</option>
+                <option value="footer">Footer</option>
+                <option value="sidebar">Sidebar</option>
+                <option value="inline">Inline</option>
+              </select>
             </div>
             
             <div>
@@ -1495,14 +1499,38 @@ function AdForm({ ad, onClose, onSuccess }) {
           </div>
           
           <div>
-            <label className="block text-sm font-bold text-gray-700 mb-2">Content</label>
+            <label className="block text-sm font-bold text-gray-700 mb-2">
+              Google AdSense Code / Custom HTML
+              <span className="text-xs font-normal text-gray-500 ml-2">
+                (Recommended for Google AdSense)
+              </span>
+            </label>
+            <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-xs text-blue-800 font-semibold mb-2">
+                📢 Google AdSense Instructions:
+              </p>
+              <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
+                <li>Copy the complete ad code from your Google AdSense account</li>
+                <li>Paste it exactly as provided (including all &lt;script&gt; tags)</li>
+                <li>The system will automatically detect and display Google AdSense ads</li>
+                <li>Ad dimensions will be automatically optimized based on position</li>
+              </ul>
+            </div>
             <textarea
               value={formData.content}
               onChange={(e) => setFormData({...formData, content: e.target.value})}
-              className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm"
-              rows="3"
-              placeholder="Ad content or description"
+              className="w-full px-4 py-3 bg-white border-2 border-gray-200 rounded-xl focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200/50 outline-none transition-all hover:border-indigo-300 shadow-sm font-mono text-xs"
+              rows="12"
+              placeholder='Paste your Google AdSense code here:&#10;&#10;&lt;script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX"&#10;     crossorigin="anonymous"&gt;&lt;/script&gt;&#10;&lt;ins class="adsbygoogle"&#10;     style="display:block"&#10;     data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"&#10;     data-ad-slot="1234567890"&#10;     data-ad-format="auto"&#10;     data-full-width-responsive="true"&gt;&lt;/ins&gt;&#10;&lt;script&gt;&#10;     (adsbygoogle = window.adsbygoogle || []).push({});&#10;&lt;/script&gt;&#10;&#10;Or paste custom HTML/JavaScript ad code here...'
             />
+            <div className="mt-2 flex items-start gap-2">
+              <span className="text-xs text-gray-500">💡</span>
+              <p className="text-xs text-gray-500 flex-1">
+                <strong>For Google AdSense:</strong> Paste the complete ad code including all &lt;script&gt; tags. 
+                The system will automatically detect Google AdSense ads and display them with appropriate dimensions. 
+                For best results, use <code className="bg-gray-100 px-1 rounded">data-full-width-responsive="true"</code> in your AdSense code.
+              </p>
+            </div>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
